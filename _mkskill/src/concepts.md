@@ -17,7 +17,7 @@ type Unit interface {
 ```
 
 The application implements it, and with it decides what stopping means and
-when it is safe. Three ways to get one:
+when it is safe. Four ways to get one:
 
 ```go
 panel.Add("web", srv)                       // a type of your own
@@ -37,6 +37,28 @@ panel.Add("mailer", quevu.Go(func(ctx context.Context) error {
 `quevu.Go` wraps a function that runs for the life of the piece: `Stop`
 cancels its context and waits for it to return. How to wind down is written
 inside the function, which is where the knowledge is.
+
+Not every piece is a loop. Some are **work launched on demand**: the
+report a user asked for, the payment a request started, each in a
+goroutine of its own. There is nothing to tell to stop; there is work
+that began and must be allowed to end. That is `quevu.Work`:
+
+```go
+payments := quevu.NewWork()
+panel.Add("payments", payments)
+
+// in the handler
+if !payments.Accepting() {
+	http.Error(w, "stopping: try again later", http.StatusServiceUnavailable)
+	return
+}
+payments.Go(func() { charge(order) }) // instead of: go charge(order)
+```
+
+Stopping it means no new jobs, and waiting for the ones running. A job
+is never cut from there: if the time given runs out, `Stop` returns the
+error and the job goes on. What the user is told when work is refused is
+the application's to decide.
 
 A **Panel** holds the units. It starts them in the order they were added
 and stops them in reverse. `StopAll` asks every unit even if one fails, and
