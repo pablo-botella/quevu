@@ -37,8 +37,8 @@ type Controller interface {
 var ErrUnknownUnit = errors.New("quevu: unknown unit")
 
 // Panel coordinates the lifecycle of an application: its units, started
-// in the order they were added and stopped in reverse, and its sources,
-// closed last so the final words of every unit are stored.
+// in the order they were added and stopped in reverse, and its logs,
+// closed last so the final words of every unit reach their consumers.
 type Panel struct {
 	// StopTimeout bounds the orderly stop performed by Run. Zero means no
 	// limit: the application takes the time it needs. The operating
@@ -49,6 +49,7 @@ type Panel struct {
 	units    []*entry
 	byName   map[string]*entry
 	sources  []Source
+	closers  []io.Closer
 	watchers map[uint64]func(UnitInfo)
 	nextW    uint64
 }
@@ -90,8 +91,19 @@ func (p *Panel) Add(name string, u Unit) error {
 	return nil
 }
 
-// AddSource registers a log so the visual part can show it. A source that
-// implements io.Closer is closed by Close.
+// AddCloser registers something to close once every unit has stopped:
+// the logs of the application. Closing a log drains its queues and
+// closes its consumers, so this is what makes the last words of every
+// unit arrive. They are closed in the order they were added.
+func (p *Panel) AddCloser(c io.Closer) {
+	p.mu.Lock()
+	p.closers = append(p.closers, c)
+	p.mu.Unlock()
+}
+
+// AddSource registers what a console shows in a tab: the screen of a log
+// and whatever providers stand behind it. A source that implements
+// io.Closer is closed by Close, after the logs.
 func (p *Panel) AddSource(s Source) {
 	p.mu.Lock()
 	p.sources = append(p.sources, s)
@@ -283,10 +295,20 @@ func (p *Panel) StopAll(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// Close closes the sources that can be closed. It belongs after StopAll:
-// the logs go last, once every unit has said its final words.
+// Close closes the logs and then the sources that can be closed. It
+// belongs after StopAll: the logs go last, once every unit has said its
+// final words, and the providers that read what they stored go after
+// them.
 func (p *Panel) Close() error {
 	var errs []error
+	p.mu.Lock()
+	closers := append([]io.Closer(nil), p.closers...)
+	p.mu.Unlock()
+	for _, c := range closers {
+		if err := c.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	for _, s := range p.Sources() {
 		if c, ok := s.(io.Closer); ok {
 			if err := c.Close(); err != nil {

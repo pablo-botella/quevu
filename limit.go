@@ -3,7 +3,7 @@ package quevu
 import "time"
 
 // That something consumes the output of a log does not mean anything
-// gives it back. A device only writes. Reading stored output is the job
+// gives it back. A consumer only receives. Reading stored output is the job
 // of a stored-data provider, a piece of its own that is attached on
 // purpose (see WithHistory), and that provider decides what it hands
 // over: how much at a time, how far back, whether it lets itself be
@@ -81,6 +81,11 @@ func (m *limited) Search(q Query) (Result, error) {
 	}
 	if m.l.SearchBudget > 0 && (q.Budget <= 0 || q.Budget > m.l.SearchBudget) {
 		q.Budget = m.l.SearchBudget
+	}
+	if m.l.MaxAge <= 0 {
+		// Nothing is hidden: the provider underneath searches itself as
+		// it sees fit, within the budget set here.
+		return Search(m.p, q)
 	}
 	// Through the limited view, so a search sees no more than a reader.
 	return Scan(m, q)

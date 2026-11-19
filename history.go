@@ -83,25 +83,51 @@ func (h *historySource) After(seq uint64, n int) ([]Chunk, error) {
 	return cs, nil
 }
 
-// Search runs one bounded step over the joined source, so a search walks
-// out of the short memory and into the store like any other reader. The
-// stored provider keeps its say: if it states terms for being searched
-// (see Limit), they apply to the whole step.
+// Search runs one bounded step over the joined source. Each half is
+// searched through its own interface and on its own terms: the step
+// starts in the half that comes first in the direction asked and, if
+// that half runs out of log before the step runs out of budget, goes on
+// in the other. The log is never asked about the store, nor the store
+// about the log.
 func (h *historySource) Search(q Query) (Result, error) {
-	if l, ok := h.stored.(*limited); ok {
-		if l.l.NoSearch {
-			// The short memory is the log's own and stays searchable.
-			return Scan(h.live, q)
-		}
-		if l.l.SearchBudget > 0 && (q.Budget <= 0 || q.Budget > l.l.SearchBudget) {
-			q.Budget = l.l.SearchBudget
-		}
+	if q.Budget <= 0 {
+		q.Budget = DefaultSearchBudget
 	}
-	return Scan(h, q)
+	if q.Max <= 0 {
+		q.Max = 1
+	}
+	// Backwards the newest chunks come first, and those are the log's.
+	first, second := Provider(h.live), h.stored
+	if q.Forward {
+		first, second = h.stored, Provider(h.live)
+	}
+	a, err := Search(first, q)
+	if err != nil || !a.Done || len(a.Matches) >= q.Max || a.Examined >= q.Budget {
+		return a, err
+	}
+	rest := q
+	rest.From = a.Reached
+	rest.Max = q.Max - len(a.Matches)
+	rest.Budget = q.Budget - a.Examined
+	b, err := Search(second, rest)
+	if err != nil {
+		return a, err
+	}
+	res := Result{Reached: b.Reached, ReachedTime: b.ReachedTime, Examined: a.Examined + b.Examined, Done: b.Done}
+	if b.Examined == 0 {
+		res.ReachedTime = a.ReachedTime
+	}
+	// Ascending order: the older half goes first.
+	if q.Forward {
+		res.Matches = append(a.Matches, b.Matches...)
+	} else {
+		res.Matches = append(b.Matches, a.Matches...)
+	}
+	return res, nil
 }
 
 // Stats forwards the device queues of the live source.
-func (h *historySource) Stats() []DeviceStats {
+func (h *historySource) Stats() []ConsumerStats {
 	if s, ok := h.live.(StatSource); ok {
 		return s.Stats()
 	}

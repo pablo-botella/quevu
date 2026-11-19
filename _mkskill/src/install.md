@@ -16,9 +16,10 @@ everything else is a module of its own, taken only by who needs it:
 | Module | What it is |
 |---|---|
 | `quevu` | Contracts and lifecycle coordination (this module) |
-| `quevu-log` | The non-visual log: positions, a queue per destination, short memory |
-| `quevu-txt` | Persistent device over a text file, and its reader by position |
-| `quevu-sqlite` | Persistent device over SQLite, and its reader by position |
+| `quevu-log` | The non-visual log: positions, and a queue per consumer |
+| `quevu-panel` | The panel as a volatile consumer: the screen of a log |
+| `quevu-txt` | Persistent consumer over a text file, and its stored-data provider |
+| `quevu-sqlite` | Persistent consumer over SQLite, and its stored-data provider |
 | `quevu-wire` | A panel served over a local connection, for a separate controller |
 | `quevu-ui` | The window, as a dynamic library with a C interface (Rust) |
 | `quevu-ui-go` | Go binding to that library, without cgo |

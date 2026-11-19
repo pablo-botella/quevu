@@ -6,9 +6,11 @@ dependencies. Every other `quevu-*` module imports this one and none is
 imported by it.
 
 Design principle to respect in any change: quevu hands problems out, it
-does not solve them. The application decides what stopping means, a device
-decides speed against safety, a console only looks. Do not move a decision
-into the panel that belongs to one of those.
+does not solve them. The application decides what stopping means, a
+consumer decides what it does with what it receives, a provider decides
+what it gives back, a console only looks. Do not move a decision to a
+piece it does not belong to, and do not let a piece reach into another:
+they meet through the interfaces here and nowhere else.
 
 ## Lifecycle
 
@@ -51,6 +53,8 @@ shown as stopped or failed.
 
 - `Start`, `Stop`: one unit. `StartAll`, `StopAll`: the global switch.
 - `Units`, `Watch`: the state of every unit, and every change of it.
+- `AddCloser`: the logs, closed once every unit has stopped.
+- `AddSource`: what a console shows in a tab.
 - `Shutdown`: `StopAll` within `StopTimeout`, then `Close`.
 - `Run`: start everything, wait for `ctx` or for the system to ask the
   process to end, then `Shutdown`. The whole life of an application with no
@@ -62,10 +66,16 @@ as stopped: quevu never pretends something stopped. The operating system
 has a limit of its own when it stops a service; a long orderly stop has to
 fit in it or raise it.
 
-## Logs: the contracts
+## Output: who does what
 
-The log itself lives in `quevu-log`. Here are the interfaces it and its
-neighbours meet through.
+The division of work is strict. Each interface marks one of its borders.
+
+| Piece | Its work | What it does not know |
+|---|---|---|
+| A log (`quevu-log`) | Consumes what the application writes and sends it to its consumers | Anything else: not which consumers persist, not that screens exist |
+| A **Consumer** | Receives chunks and does with them what it sees fit | Who else receives them |
+| A **Provider** | Gives chunks back by position, and decides what it gives | Who stored them |
+| A console | Keeps what it shows; asks providers for the rest | Where anything is kept |
 
 A **Chunk** is the unit of output: what is queued, positioned and asked
 for. Usually a line, not necessarily.
@@ -78,25 +88,33 @@ type Chunk struct {
 }
 ```
 
-`Seq` is the same for every source of the same log, which is what lets a
-reader move from live output to stored output without a seam.
+`Seq` is the same for whoever holds the chunk, which is what lets a reader
+move from recent output to stored output without a seam.
 
-A **Device** is a persistent destination. The log queues chunks for it and
-writes them in batches from a goroutine per device, so a device is never
-called concurrently and never slows another destination down:
+### Consumers
 
 ```go
-type Device interface {
+type Consumer interface {
 	Write(batch []Chunk) error
 	Close() error
 }
 ```
 
-A device that also implements `SeqDevice` tells the log the last position
-it holds, so positions stay unique across restarts.
+A consumer may be **persistent** (`quevu-txt`, `quevu-sqlite`) or
+**volatile** (the screen of the panel, `quevu-panel`; something that
+prints; something that counts). That is a property of the consumer, not
+something the log is told. A log queues chunks for each consumer and hands
+them over in batches from a goroutine per consumer, so a consumer is never
+called concurrently and never slows another one down.
 
-A **Provider** serves chunks by position. It is all a console needs to move
-forwards and backwards:
+A consumer that also implements `SeqConsumer` tells the log the last
+position it holds, so positions stay unique across restarts.
+
+### Providers
+
+That something consumes the output does not mean anything gives it back. A
+database that stores a log is a consumer; reading it is the work of a
+**stored-data provider**, a piece of its own, attached on purpose.
 
 ```go
 type Provider interface {
@@ -106,8 +124,37 @@ type Provider interface {
 }
 ```
 
-A **Source** is a log as a console sees it: a `Provider` with a name that
-can open a live **Feed**.
+Every method returns at most `n` chunks. Fewer, or none, is the provider's
+right, and is not questioned: an empty answer means there is nothing
+further that way as far as that provider is concerned.
+
+`quevu.Limit` is how a provider states its terms without each
+implementation growing the same options:
+
+```go
+history := quevu.Limit(reader, quevu.Limits{
+	Page:         500,            // at most this many per request
+	MaxAge:       24 * time.Hour, // nothing older than this
+	SearchBudget: 20_000,         // a search step examines no more
+	NoSearch:     false,          // or refuse to be searched at all
+})
+```
+
+### A console's providers
+
+A console has its own memory (what is on screen), an **immediate**
+provider for what is recent and a **historical** one for what is stored.
+`WithHistory` joins the last two into the one `Source` a console is given:
+
+```go
+screen := qpanel.New("web")                            // volatile consumer, immediate provider
+src := quevu.WithHistory(screen, qtxt.NewReader(path)) // plus a historical one
+panel.AddSource(src)
+```
+
+Where the short memory of the screen ends the stored provider takes over,
+in both directions, and positions make the join seamless. With a `nil`
+provider the screen is all there is.
 
 ## Feeds: two one-way lanes
 
@@ -136,22 +183,34 @@ for d := range f.Data {
 - `OpBefore` and `OpAfter` move by position. An empty answer to `OpBefore`
   means there is nothing further back.
 
-A console is a view, not a store: it keeps what the user can see and asks
-again for the rest.
+## Searching
 
-## History: changing provider without noticing
-
-A log remembers only its last few hundred chunks. Going further back means
-changing source, and the provider behind it: a reader over the persistent
-store, with a file handle or a connection of its own, so that reading
-history never competes with the component that guarantees persistence.
+A log may hold millions of chunks, so a search is never "the whole log".
+It is a **step**: it starts at a position, walks one way, examines a
+bounded number of chunks and stops, saying how far it got. Whoever asked
+decides whether to take another step from there.
 
 ```go
-src := quevu.WithHistory(theLog, qtxt.NewReader(path))
+res, err := quevu.Search(src, quevu.Query{
+	Text:   "timeout",
+	From:   0,       // going backwards, zero is the end of the log
+	Budget: 100_000, // chunks examined, found or not
+})
+if len(res.Matches) == 0 && !res.Done {
+	// Nothing in this stretch. res.Reached and res.ReachedTime say how
+	// far back it looked; the next step starts at res.Reached.
+}
 ```
 
-The result is one `Source`. Where the short memory ends the reader takes
-over, in both directions, and positions make the join seamless.
+- The match ignores case and ignores ANSI color sequences: it is made
+  against the text as a console shows it (`quevu.PlainText`), so a phrase
+  is found even when a change of color falls in the middle of it.
+- `Search` asks the provider if it knows how to search itself
+  (`Searcher`); otherwise it reads it page by page (`Scan`), which works
+  for any provider and costs what the budget says.
+- A joined source searches each half through that half's own interface:
+  the recent output first, then the store, which applies its own terms.
+- `Done` means the step ran out of log, not out of budget.
 
 ## Controller
 
@@ -163,15 +222,18 @@ know which of the two is behind.
 
 ## Rules and gotchas
 
+- **Keep the borders.** A log does not read, a consumer does not know its
+  neighbours, a provider is not reached into: `quevu.Limit` and `Searcher`
+  exist so terms are stated through interfaces. Nothing in this package
+  looks at a concrete type from another module.
 - **`Unit.Start` must not block** for the life of the piece. Launch and
   return; use `quevu.Go` for a function that runs until told.
 - **`Watch` callbacks must not block** nor call back into the panel: they
   run on the goroutine that caused the change.
 - **Add units before starting.** Order of `Add` is order of start.
-- **Close the logs last.** `Shutdown` and `Run` do it; if you call
-  `StopAll` yourself, call `Close` after it, so the last words of every
-  unit are stored.
-- **`Chunk.Data` is read-only** once handed over: it is shared by the
-  short memory, the queues and the feeds.
+- **Register the logs with `AddCloser`.** They close last, so the final
+  words of every unit reach their consumers; the sources close after them.
+- **`Chunk.Data` is read-only** once handed over: every consumer of a log
+  receives the same slice.
 - **A failed `Stop` leaves the unit `Failed` and still started**, so it
   can be asked again.

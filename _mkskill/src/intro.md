@@ -18,8 +18,8 @@ solve:
   and nobody can follow one piece on its own.
 
 quevu gives the application an orderly start and stop, a log per piece that
-is queued towards every destination at that destination's own speed, and a
-small window with the switches and the screens.
+is sent to every consumer at that consumer's own speed, and a small window
+with the switches and the screens.
 
 ```go
 panel := quevu.New()
@@ -34,5 +34,6 @@ if err := panel.Run(context.Background()); err != nil {
 ```
 
 quevu does not solve the application's problems, it hands them out: the
-application decides what stopping means and when it is safe, a device
-decides how fast and how safely it persists, and a console only looks.
+application decides what stopping means and when it is safe, each consumer
+decides what it does with what it receives, each provider decides what it
+gives back, and a console only looks.

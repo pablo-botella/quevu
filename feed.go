@@ -96,10 +96,11 @@ func (f *Feed) Close() {
 	})
 }
 
-// Source is a log as a console sees it: something with a name that serves
-// chunks by position and can open a live feed. The log implements it in
-// the application's process; the wire client implements it at the other
-// end of a connection. A console only cares about who sends it the chunks.
+// Source is what a console shows in a tab: something with a name that
+// gives chunks by position and can open a live feed. The screen of a log
+// implements it in the application's process, alone or joined with a
+// stored-data provider; the wire client implements it at the other end
+// of a connection. A console only cares about who sends it the chunks.
 type Source interface {
 	Provider
 	// Name identifies the log. It is what a tab is titled with.
