@@ -82,6 +82,13 @@ func (m *limited) Search(q Query) (Result, error) {
 	if m.l.SearchBudget > 0 && (q.Budget <= 0 || q.Budget > m.l.SearchBudget) {
 		q.Budget = m.l.SearchBudget
 	}
+	if m.l.MaxAge > 0 {
+		// What the provider hides for being too old, a search does not
+		// see either: its lower bound in time is at least the horizon.
+		if horizon := m.now().Add(-m.l.MaxAge); q.Since.Before(horizon) {
+			q.Since = horizon
+		}
+	}
 	if m.l.MaxAge <= 0 {
 		// Nothing is hidden: the provider underneath searches itself as
 		// it sees fit, within the budget set here.

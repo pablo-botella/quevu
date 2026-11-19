@@ -2,6 +2,7 @@ package quevu
 
 import (
 	"bytes"
+	"time"
 	"unicode/utf8"
 )
 
@@ -31,6 +32,12 @@ type Query struct {
 	// Budget ends the step once this many chunks have been examined,
 	// found or not. Zero means DefaultSearchBudget.
 	Budget int
+	// Since and Until bound the search in time: only chunks that entered
+	// their log within them can match. A zero time is no bound. A step
+	// that walks past the far bound stops there: nothing beyond it can
+	// be in range, since chunks are in the order they were written.
+	Since time.Time
+	Until time.Time
 	// History lets the step go into the history. It is set only because
 	// the user asked: without it a search stays in recent output.
 	History bool
@@ -54,6 +61,10 @@ type Result struct {
 	// History is set when the step ran out of recent output and there is
 	// a history it did not look into. It is an offer for the user.
 	History bool
+	// OutOfRange is set, with Done, when the step stopped because it
+	// walked past the bound of the time range: there is nothing further
+	// to find in this direction, here or anywhere older or newer.
+	OutOfRange bool
 }
 
 // Searcher is implemented by providers that can search their own store
@@ -95,13 +106,26 @@ func Scan(p Provider, q Query) (Result, error) {
 	}
 
 	var scratch []byte
-	test := func(c Chunk) {
+	// test looks at one chunk and says whether the step may go on.
+	test := func(c Chunk) bool {
 		res.Examined++
 		res.Reached, res.ReachedTime = c.Seq, c.Time.UnixNano()
+		early := !q.Since.IsZero() && c.Time.Before(q.Since)
+		late := !q.Until.IsZero() && c.Time.After(q.Until)
+		// Walking away from the range: the far bound has been passed.
+		if (early && !q.Forward) || (late && q.Forward) {
+			res.Done, res.OutOfRange = true, true
+			return false
+		}
+		// Walking towards it: not there yet.
+		if early || late {
+			return true
+		}
 		scratch = PlainText(scratch[:0], c.Data)
 		if bytes.Contains(bytes.ToLower(scratch), needle) {
 			res.Matches = append(res.Matches, c)
 		}
+		return len(res.Matches) < max
 	}
 
 	for res.Examined < budget && len(res.Matches) < max {
@@ -125,16 +149,19 @@ func Scan(p Provider, q Query) (Result, error) {
 		}
 		if q.Forward {
 			for _, c := range cs {
-				if test(c); len(res.Matches) >= max {
+				if !test(c) {
 					break
 				}
 			}
 		} else {
 			for i := len(cs) - 1; i >= 0; i-- {
-				if test(cs[i]); len(res.Matches) >= max {
+				if !test(cs[i]) {
 					break
 				}
 			}
+		}
+		if res.OutOfRange {
+			break
 		}
 		if !q.Forward && res.Reached <= 1 {
 			res.Done = len(res.Matches) < max

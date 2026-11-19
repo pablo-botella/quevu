@@ -177,6 +177,12 @@ func (j *joined) Search(q Query) (Result, error) {
 		if !part.Done || len(res.Matches) >= q.Max || res.Examined >= q.Budget {
 			return res, nil
 		}
+		if part.OutOfRange {
+			// Past the bound of the time range: no other piece, and no
+			// history, can hold anything in range.
+			res.OutOfRange = true
+			return res, nil
+		}
 		step.From = res.Reached
 		step.Max = q.Max - len(res.Matches)
 		step.Budget = q.Budget - res.Examined

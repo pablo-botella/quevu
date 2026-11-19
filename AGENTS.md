@@ -240,6 +240,8 @@ res, err := quevu.Search(src, quevu.Query{
 	Text:   "timeout",
 	From:   0,       // going backwards, zero is the end of the log
 	Budget: 100_000, // chunks examined, found or not
+	Since:  monday,  // optional: only what entered the log in this range
+	Until:  tuesday,
 })
 if len(res.Matches) == 0 && !res.Done {
 	// Nothing in this stretch. res.Reached and res.ReachedTime say how
@@ -258,6 +260,10 @@ if len(res.Matches) == 0 && !res.Done {
   is searched only when `Query.History` is set, which means the user
   asked; otherwise a step that runs out of recent output returns with
   `Result.History` set, as an offer, and stops.
+- `Since` and `Until` bound the search in time. A step that walks past
+  the far bound stops there with `OutOfRange`: chunks are in the order
+  they were written, so nothing beyond it can be in range, in this
+  provider or in any older one. The history is then not offered.
 - `Done` means the step ran out of log, not out of budget.
 
 ## Controller
