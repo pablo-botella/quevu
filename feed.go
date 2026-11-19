@@ -21,6 +21,13 @@ const (
 	OpBefore
 	// OpAfter asks for the N chunks that follow Seq.
 	OpAfter
+	// OpHistoryBefore is OpBefore answered from the history. A console
+	// sends it only because its user asked for the history: nothing
+	// reaches the historical provider on its own.
+	OpHistoryBefore
+	// OpHistoryAfter is OpAfter for a console that is in the history: it
+	// walks forwards through it and out of it, back into recent output.
+	OpHistoryAfter
 )
 
 func (o Op) String() string {
@@ -37,6 +44,10 @@ func (o Op) String() string {
 		return "before"
 	case OpAfter:
 		return "after"
+	case OpHistoryBefore:
+		return "history-before"
+	case OpHistoryAfter:
+		return "history-after"
 	}
 	return "unknown"
 }
@@ -58,7 +69,11 @@ type Delivery struct {
 	// console fell behind, its buffer filled up and the source hung the
 	// sign by itself. Live output sent meanwhile is not kept for it.
 	Full bool
-	Err  error
+	// History is set on an answer to OpBefore that came back short: the
+	// recent output ends here, and there is a history that could be asked
+	// for. It is an offer for the user, not something to act on.
+	History bool
+	Err     error
 }
 
 // Feed connects one console to one source through two one-way lanes: Data

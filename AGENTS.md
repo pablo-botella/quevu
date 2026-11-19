@@ -140,22 +140,43 @@ history := quevu.Limit(reader, quevu.Limits{
 })
 ```
 
-### A console's providers
+### A console's providers, and their roles
 
-A console has its own memory (what is on screen), an **immediate**
-provider for what is recent and a **historical** one for what is stored.
-`WithHistory` joins the last two into the one `Source` a console is given:
+A console escalates in three steps, and only the first two happen by
+themselves:
+
+1. **Its own memory**: what its screen remembers.
+2. **The immediate provider**, automatically, as soon as it needs
+   something the screen no longer has.
+3. **The historical provider**, only on its user's request. A console
+   that runs out of recent output says so and offers the history, if one
+   is configured. It never goes there on its own.
+
+A role is given by configuration, not by class. Nothing in a provider
+says which one it plays, and the same kind can be set up twice to play
+both:
 
 ```go
-screen := qpanel.New("web")                            // volatile consumer, immediate provider
-src := quevu.WithHistory(screen, qtxt.NewReader(path)) // plus a historical one
+src := quevu.Join(screen, quevu.Roles{
+	Immediate:  liveReader,    // a reader over the live table
+	Historical: archiveReader, // the same kind of reader, over the archives
+})
 panel.AddSource(src)
 ```
 
-Where the short memory of the screen ends the stored provider takes over,
-in both directions, and positions make the join seamless. With a `nil`
-provider the screen is all there is.
+Either role may be left empty. With neither, the screen is all there is.
 
+There is **one** historical provider as far as a console is concerned. If
+the history lives in several places it is an aggregator that knows them;
+the console never does:
+
+```go
+history := quevu.Aggregate(year2024, year2025, liveTable) // oldest first
+```
+
+`Aggregate` answers a request by asking as many parts as it takes, in the
+order the direction calls for. Parts may overlap; a chunk held by two is
+given once. A part out of reach does not hide the others.
 ## Feeds: two one-way lanes
 
 A feed connects one console to one source. `Data` brings deliveries down,
@@ -180,8 +201,12 @@ for d := range f.Data {
 - If the console falls behind and its buffer fills, the source hangs the
   sign by itself and says so with `Delivery{Op: OpPause, Full: true}`. The
   source never waits for a console.
-- `OpBefore` and `OpAfter` move by position. An empty answer to `OpBefore`
-  means there is nothing further back.
+- `OpBefore` and `OpAfter` move by position through recent output. An
+  answer to `OpBefore` that comes back short means recent output ends
+  there; if it carries `History`, a history exists and may be offered.
+- `OpHistoryBefore` and `OpHistoryAfter` are the same through the
+  history. A console sends them only after its user asked. Walking
+  forwards out of the history into recent output needs no permission.
 
 ## Searching
 
@@ -208,8 +233,11 @@ if len(res.Matches) == 0 && !res.Done {
 - `Search` asks the provider if it knows how to search itself
   (`Searcher`); otherwise it reads it page by page (`Scan`), which works
   for any provider and costs what the budget says.
-- A joined source searches each half through that half's own interface:
-  the recent output first, then the store, which applies its own terms.
+- A joined source searches each piece through that piece's own interface
+  and on its terms: the screen, then the immediate provider. The history
+  is searched only when `Query.History` is set, which means the user
+  asked; otherwise a step that runs out of recent output returns with
+  `Result.History` set, as an offer, and stops.
 - `Done` means the step ran out of log, not out of budget.
 
 ## Controller

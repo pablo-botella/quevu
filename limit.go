@@ -5,7 +5,7 @@ import "time"
 // That something consumes the output of a log does not mean anything
 // gives it back. A consumer only receives. Reading stored output is the job
 // of a stored-data provider, a piece of its own that is attached on
-// purpose (see WithHistory), and that provider decides what it hands
+// purpose (see Join), and that provider decides what it hands
 // over: how much at a time, how far back, whether it lets itself be
 // searched and for how long.
 //

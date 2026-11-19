@@ -31,6 +31,9 @@ type Query struct {
 	// Budget ends the step once this many chunks have been examined,
 	// found or not. Zero means DefaultSearchBudget.
 	Budget int
+	// History lets the step go into the history. It is set only because
+	// the user asked: without it a search stays in recent output.
+	History bool
 }
 
 // Result is what one step of a search found.
@@ -48,6 +51,9 @@ type Result struct {
 	// Done means the step ran out of log, not out of budget: there is
 	// nothing further in this direction.
 	Done bool
+	// History is set when the step ran out of recent output and there is
+	// a history it did not look into. It is an offer for the user.
+	History bool
 }
 
 // Searcher is implemented by providers that can search their own store
