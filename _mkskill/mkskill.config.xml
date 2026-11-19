@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mkskill>
+  <project id="main" name="quevu" project-type="Go-Module">
+    <meta>
+      <module>github.com/pablo-botella/quevu</module>
+      <license>MIT</license>
+      <description>Control panel core for Go applications: an orderly start and stop of the pieces an application is made of (Unit, Panel) and the contracts of a log mechanism that keeps each output apart and serves it by position (Chunk, Provider, Device, Feed, Source, Controller). Use when working with github.com/pablo-botella/quevu or any of the quevu-* modules, or when a Go application needs a graceful shutdown coordinated across several pieces.</description>
+    </meta>
+  </project>
+</mkskill>
