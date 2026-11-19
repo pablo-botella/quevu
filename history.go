@@ -83,6 +83,23 @@ func (h *historySource) After(seq uint64, n int) ([]Chunk, error) {
 	return cs, nil
 }
 
+// Search runs one bounded step over the joined source, so a search walks
+// out of the short memory and into the store like any other reader. The
+// stored provider keeps its say: if it states terms for being searched
+// (see Limit), they apply to the whole step.
+func (h *historySource) Search(q Query) (Result, error) {
+	if l, ok := h.stored.(*limited); ok {
+		if l.l.NoSearch {
+			// The short memory is the log's own and stays searchable.
+			return Scan(h.live, q)
+		}
+		if l.l.SearchBudget > 0 && (q.Budget <= 0 || q.Budget > l.l.SearchBudget) {
+			q.Budget = l.l.SearchBudget
+		}
+	}
+	return Scan(h, q)
+}
+
 // Stats forwards the device queues of the live source.
 func (h *historySource) Stats() []DeviceStats {
 	if s, ok := h.live.(StatSource); ok {
