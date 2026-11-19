@@ -48,6 +48,10 @@ everything else is a module of its own, taken only by who needs it:
 | `quevu-panel` | The panel as a volatile consumer: the screen of a log |
 | `quevu-txt` | Persistent consumer over a text file, and its stored-data provider |
 | `quevu-sqlite` | Persistent consumer over SQLite, and its stored-data provider |
+| `quevu-syslog` | Persistent consumer over the system log (Windows Event Log) |
+| `quevu-pipe` | Input: a program's standard output, through a pipe, into a log |
+| `quevu-sqs` | Amazon SQS, as a consumer and as an input |
+| `quevu-pubsub` | Google Cloud Pub/Sub, as a consumer and as an input |
 | `quevu-wire` | A panel served over a local connection, for a separate controller |
 | `quevu-ui` | The window, as a dynamic library with a C interface (Rust) |
 | `quevu-ui-go` | Go binding to that library, without cgo |
@@ -132,6 +136,26 @@ type Chunk struct {
 
 `Seq` is the same for whoever holds the chunk, which is what lets a reader
 move from recent output to stored output without a seam.
+
+### Inputs
+
+A log is written to by the application itself, and it can also be fed from
+outside: the output of another program through a pipe (`quevu-pipe`), a
+cloud queue (`quevu-sqs`, `quevu-pubsub`). An input is a unit like any
+other, started and stopped with the application, and all it knows of a
+log is its input end:
+
+```go
+type Intake interface {
+	Write(p []byte) (int, error)        // a stream of text: lines become chunks
+	Append(data []byte) (uint64, error) // one chunk, whole
+}
+```
+
+When `Append` returns without error the log has accepted the data. That
+is the moment an input may confirm it to wherever it came from, and not
+before: an input that reads a queue deletes or acknowledges a message only
+then, so a message can arrive twice but is never lost on the way in.
 
 ### Consumers
 
