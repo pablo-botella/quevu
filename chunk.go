@@ -29,7 +29,12 @@
 // here, through these interfaces.
 package quevu
 
-import "time"
+import (
+	"io"
+	"time"
+)
+
+var _ io.Writer = Intake(nil)
 
 // Chunk is the unit of output: what is queued, positioned and asked for.
 // A chunk is usually one line of text, but nothing requires it to be.
@@ -42,6 +47,19 @@ type Chunk struct {
 	Time time.Time
 	// Data is the payload. It must not be modified once handed over.
 	Data []byte
+}
+
+// Intake is the input end of a log: where whatever reads data from
+// somewhere (a pipe, a queue) puts it, so that it follows the normal way
+// to the consumers. It is all an input piece knows of a log.
+type Intake interface {
+	// Write takes a stream of text: every line becomes a chunk.
+	Write(p []byte) (int, error)
+	// Append takes data as one chunk, whatever it contains, and returns
+	// its position. When it returns without error the log has accepted
+	// the data, which is the moment an input may confirm it to wherever
+	// it came from.
+	Append(data []byte) (uint64, error)
 }
 
 // Consumer is a destination of a log. The log queues chunks for it and
