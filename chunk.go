@@ -63,6 +63,16 @@ type Intake interface {
 	Append(data []byte) (uint64, error)
 }
 
+// TimedIntake is an Intake that can be told when the data was written.
+// It is for inputs that bring data from somewhere that knew: what a
+// program wrote on another machine an hour ago should not look as if it
+// had been written now.
+type TimedIntake interface {
+	Intake
+	// AppendAt is Append with the time the data was originally written.
+	AppendAt(data []byte, at time.Time) (uint64, error)
+}
+
 // Consumer is a destination of a hub. The hub queues chunks for it and
 // hands them over in batches from a goroutine of its own, so a consumer
 // is never called concurrently and never slows down another one.
