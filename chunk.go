@@ -8,8 +8,9 @@
 // The division of work is strict, and every interface here marks one of
 // its borders:
 //
-//   - A log consumes what the application writes and sends it to its
-//     consumers. That is all it knows.
+//   - A hub collects what the application writes and distributes it to
+//     its consumers. That is all it knows: it never answers a query.
+//     What flows through one hub is a log, the output of one piece.
 //   - A Consumer receives chunks and does with them what it sees fit. It
 //     may be persistent (a file, a database) or volatile (the panel).
 //   - A Provider gives chunks back, by position. That something consumes
@@ -24,7 +25,7 @@
 // consumer decides what it does with what it receives, each provider
 // decides what it gives, and a console only looks.
 //
-// This package has no dependencies. The log itself, the consumers, the
+// This package has no dependencies. The hub itself, the consumers, the
 // wire protocol and the visual part live in modules of their own and meet
 // here, through these interfaces.
 package quevu
@@ -49,27 +50,27 @@ type Chunk struct {
 	Data []byte
 }
 
-// Intake is the input end of a log: where whatever reads data from
+// Intake is the input end of a hub: where whatever reads data from
 // somewhere (a pipe, a queue) puts it, so that it follows the normal way
-// to the consumers. It is all an input piece knows of a log.
+// to the consumers. It is all an input piece knows of a hub.
 type Intake interface {
 	// Write takes a stream of text: every line becomes a chunk.
 	Write(p []byte) (int, error)
 	// Append takes data as one chunk, whatever it contains, and returns
-	// its position. When it returns without error the log has accepted
+	// its position. When it returns without error the hub has accepted
 	// the data, which is the moment an input may confirm it to wherever
 	// it came from.
 	Append(data []byte) (uint64, error)
 }
 
-// Consumer is a destination of a log. The log queues chunks for it and
+// Consumer is a destination of a hub. The hub queues chunks for it and
 // hands them over in batches from a goroutine of its own, so a consumer
 // is never called concurrently and never slows down another one.
 //
 // What a consumer does with a batch is its own business: store it safely
 // and slowly, store it fast and at some risk, keep the last few for a
 // screen, or throw it away. Persistent or volatile is a property of the
-// consumer, not something the log knows.
+// consumer, not something the hub knows.
 type Consumer interface {
 	// Write takes a batch of consecutive chunks.
 	Write(batch []Chunk) error
@@ -79,7 +80,7 @@ type Consumer interface {
 }
 
 // SeqConsumer is implemented by consumers that know the last position
-// they hold, which in practice means the persistent ones. A log starts
+// they hold, which in practice means the persistent ones. A hub starts
 // counting after the highest, so positions stay unique across restarts
 // of the application.
 type SeqConsumer interface {
@@ -103,7 +104,7 @@ type Provider interface {
 	After(seq uint64, n int) ([]Chunk, error)
 }
 
-// ConsumerStats is the view of the queue between a log and one consumer.
+// ConsumerStats is the view of the queue between a hub and one consumer.
 // A queue is there to absorb bursts: one that keeps growing means the
 // consumer is too slow for the output it receives and should be replaced.
 type ConsumerStats struct {

@@ -16,7 +16,7 @@ everything else is a module of its own, taken only by who needs it:
 | Module | What it is |
 |---|---|
 | `quevu` | Contracts and lifecycle coordination (this module) |
-| `quevu-log` | The non-visual log: positions, and a queue per consumer |
+| `quevu-hub` | The control element: collects, numbers and distributes, a queue per consumer |
 | `quevu-panel` | The panel as a volatile consumer: the screen of a log |
 | `quevu-txt` | Persistent consumer over a text file, and its stored-data provider |
 | `quevu-sqlite` | Persistent consumer over SQLite, and its stored-data provider |

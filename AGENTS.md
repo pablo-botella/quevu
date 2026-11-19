@@ -72,10 +72,13 @@ The division of work is strict. Each interface marks one of its borders.
 
 | Piece | Its work | What it does not know |
 |---|---|---|
-| A log (`quevu-log`) | Consumes what the application writes and sends it to its consumers | Anything else: not which consumers persist, not that screens exist |
+| A hub (`quevu-hub`) | Collects what the application writes and distributes it to its consumers. Never answers a query | Anything else: not which consumers persist, not that screens exist |
 | A **Consumer** | Receives chunks and does with them what it sees fit | Who else receives them |
 | A **Provider** | Gives chunks back by position, and decides what it gives | Who stored them |
 | A console | Keeps what it shows; asks providers for the rest | Where anything is kept |
+
+What flows through one hub is a **log**: the output of one piece, in the
+order it was written. The hub is the element; the log is what it carries.
 
 A **Chunk** is the unit of output: what is queued, positioned and asked
 for. Usually a line, not necessarily.
@@ -93,11 +96,11 @@ move from recent output to stored output without a seam.
 
 ### Inputs
 
-A log is written to by the application itself, and it can also be fed from
+A hub is written to by the application itself, and it can also be fed from
 outside: the output of another program through a pipe (`quevu-pipe`), a
 cloud queue (`quevu-sqs`, `quevu-pubsub`). An input is a unit like any
 other, started and stopped with the application, and all it knows of a
-log is its input end:
+hub is its input end:
 
 ```go
 type Intake interface {
@@ -106,7 +109,7 @@ type Intake interface {
 }
 ```
 
-When `Append` returns without error the log has accepted the data. That
+When `Append` returns without error the hub has accepted the data. That
 is the moment an input may confirm it to wherever it came from, and not
 before: an input that reads a queue deletes or acknowledges a message only
 then, so a message can arrive twice but is never lost on the way in.
@@ -123,11 +126,11 @@ type Consumer interface {
 A consumer may be **persistent** (`quevu-txt`, `quevu-sqlite`) or
 **volatile** (the screen of the panel, `quevu-panel`; something that
 prints; something that counts). That is a property of the consumer, not
-something the log is told. A log queues chunks for each consumer and hands
+something the hub is told. A hub queues chunks for each consumer and hands
 them over in batches from a goroutine per consumer, so a consumer is never
 called concurrently and never slows another one down.
 
-A consumer that also implements `SeqConsumer` tells the log the last
+A consumer that also implements `SeqConsumer` tells the hub the last
 position it holds, so positions stay unique across restarts.
 
 ### Providers
@@ -276,7 +279,7 @@ know which of the two is behind.
 
 ## Rules and gotchas
 
-- **Keep the borders.** A log does not read, a consumer does not know its
+- **Keep the borders.** A hub does not answer, a consumer does not know its
   neighbours, a provider is not reached into: `quevu.Limit` and `Searcher`
   exist so terms are stated through interfaces. Nothing in this package
   looks at a concrete type from another module.
@@ -285,7 +288,7 @@ know which of the two is behind.
 - **`Watch` callbacks must not block** nor call back into the panel: they
   run on the goroutine that caused the change.
 - **Add units before starting.** Order of `Add` is order of start.
-- **Register the logs with `AddCloser`.** They close last, so the final
+- **Register the hubs with `AddCloser`.** They close last, so the final
   words of every unit reach their consumers; the sources close after them.
 - **`Chunk.Data` is read-only** once handed over: every consumer of a log
   receives the same slice.
