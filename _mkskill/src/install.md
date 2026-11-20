@@ -20,7 +20,7 @@ everything else is a module of its own, taken only by who needs it:
 | `quevu-panel` | The panel as a volatile consumer: the screen of a log |
 | `quevu-txt` | Persistent consumer over a text file, and its stored-data provider |
 | `quevu-sql` | Persistent consumers over SQL databases (SQLite, MySQL), and their stored-data providers |
-| `quevu-syslogwrite` | Persistent consumer that writes to the system log (Windows Event Log) |
+| `quevu-syslog` | The system log as a queue: a consumer that writes to it and an input that reads from it (Windows Event Log) |
 | `quevu-logger` | Input: what a Go application writes with its standard logger, split into channels |
 | `quevu-pipe` | Input: a program's standard output, through a pipe, into a log |
 | `quevu-sqs` | Amazon SQS, as a consumer and as an input |
