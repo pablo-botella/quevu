@@ -4,9 +4,11 @@ mkskill:
   in: ai*
 ---
 
-# quevu - agent notes
+# quevu-kernel - agent notes
 
-Go package `github.com/pablo-botella/quevu`: the contracts of the quevu
+Go module `github.com/pablo-botella/quevu-kernel`, **package `quevu`**
+(the import carries the alias: `quevu "github.com/pablo-botella/quevu-kernel"`).
+The name `quevu` alone is kept for the application. Here live the contracts of the quevu
 control panel and the coordination of an application's lifecycle. No
 dependencies. Every other `quevu-*` module imports this one and none is
 imported by it.

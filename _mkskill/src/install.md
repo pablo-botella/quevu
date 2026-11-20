@@ -7,7 +7,7 @@ mkskill:
 ## Install
 
 ```
-go get github.com/pablo-botella/quevu
+go get github.com/pablo-botella/quevu-kernel
 ```
 
 This module has no dependencies. It holds the contracts and the lifecycle;

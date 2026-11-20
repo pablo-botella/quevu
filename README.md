@@ -1,6 +1,12 @@
-# quevu
+# quevu-kernel
 
-A control panel for Go applications. The name comes from *queue view*.
+The kernel of **quevu**, a control panel for Go applications (the name
+comes from *queue view*): the contracts every other `quevu-*` module is
+built on, and nothing else. The package is named `quevu`:
+
+```go
+import quevu "github.com/pablo-botella/quevu-kernel"
+```
 
 An application made of several pieces (a web server, a mailer, a periodic
 task, a group of workers) has two problems that a console window does not
@@ -35,7 +41,7 @@ gives back, and a console only looks.
 ## Install
 
 ```
-go get github.com/pablo-botella/quevu
+go get github.com/pablo-botella/quevu-kernel
 ```
 
 This module has no dependencies. It holds the contracts and the lifecycle;
