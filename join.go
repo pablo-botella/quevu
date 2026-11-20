@@ -192,8 +192,8 @@ func (j *joined) Search(q Query) (Result, error) {
 	return res, nil
 }
 
-// Stats forwards the queues of the log, as the screen shows them.
-func (j *joined) Stats() []ConsumerStats {
+// Stats forwards the writers of the log, as the screen shows them.
+func (j *joined) Stats() []WriterStats {
 	if s, ok := j.screen.(StatSource); ok {
 		return s.Stats()
 	}

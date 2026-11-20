@@ -38,7 +38,7 @@ var ErrUnknownUnit = errors.New("quevu: unknown unit")
 
 // Panel coordinates the lifecycle of an application: its units, started
 // in the order they were added and stopped in reverse, and its logs,
-// closed last so the final words of every unit reach their consumers.
+// closed last so the final words of every unit reach their writers.
 type Panel struct {
 	// StopTimeout bounds the orderly stop performed by Run. Zero means no
 	// limit: the application takes the time it needs. The operating
@@ -92,8 +92,8 @@ func (p *Panel) Add(name string, u Unit) error {
 }
 
 // AddCloser registers something to close once every unit has stopped:
-// the logs of the application. Closing a log drains its queues and
-// closes its consumers, so this is what makes the last words of every
+// the logs of the application. Closing a hub sends on what it holds and
+// waits for its writers, so this is what makes the last words of every
 // unit arrive. They are closed in the order they were added.
 func (p *Panel) AddCloser(c io.Closer) {
 	p.mu.Lock()

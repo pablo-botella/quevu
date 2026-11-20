@@ -86,15 +86,15 @@ The division of work is strict. Each interface marks one of its borders.
 
 | Piece | Its work | What it does not know |
 |---|---|---|
-| A hub (`quevu-hub`) | Collects what the application writes and distributes it to its consumers. Never answers a query | Anything else: not which consumers persist, not that screens exist |
-| A **Consumer** | Receives chunks and does with them what it sees fit | Who else receives them |
+| A hub (`quevu-hub`) | One input channel, one output channel per writer: takes what arrives, gives it a position, sends it on. Never answers a query | Anything else: only channels. Not what a writer does, not that screens exist |
+| A **Writer** | Receives chunks from its channel and does its thing with them | Who else receives them, or whether the hub waits for it |
 | A **Provider** | Gives chunks back by position, and decides what it gives | Who stored them |
 | A console | Keeps what it shows; asks providers for the rest | Where anything is kept |
 
 What flows through one hub is a **log**: the output of one piece, in the
 order it was written. The hub is the element; the log is what it carries.
 
-A **Chunk** is the unit of output: what is queued, positioned and asked
+A **Chunk** is the unit of output: what is positioned, sent and asked
 for. Usually a line, not necessarily.
 
 ```go
@@ -108,49 +108,87 @@ type Chunk struct {
 `Seq` is the same for whoever holds the chunk, which is what lets a reader
 move from recent output to stored output without a seam.
 
-### Inputs
+### Producers
 
-A hub is written to by the application itself, and it can also be fed from
-outside: the output of another program through a pipe (`quevu-pipe`), a
-cloud queue (`quevu-sqs`, `quevu-pubsub`). An input is a unit like any
-other, started and stopped with the application, and all it knows of a
-hub is its input end:
+A producer is whatever writes into the input channel of a hub: the
+application itself, or a piece that reads what was written somewhere
+else, like the output of another program through a pipe (`quevu-pipe`),
+the event log of the system (`quevu-syslog`) or a cloud queue
+(`quevu-sqs`, `quevu-pubsub`). Such a piece is a unit like any other,
+started and stopped with the application. All a producer knows of a hub
+is its input end:
+
+```go
+type Entry struct {
+	Data []byte    // one entry is one chunk
+	Time time.Time // when it was written, if the producer knows; zero is now
+}
+
+type Input interface {
+	In() chan<- Entry      // any number of goroutines may send
+	Done() <-chan struct{} // closed when the hub takes no more
+}
+```
+
+Nobody closes the input channel: with several senders, closing is the
+one thing that cannot be shared. A hub that stops closes `Done` instead.
+
+An **Inlet** is the same input for code that does not want a channel.
+`NewInlet(hub)` is an `io.Writer`, so the standard logger, `log/slog` or
+`fmt.Fprintf` can write to it (every line is an entry), and it has the
+two methods a reading piece needs:
 
 ```go
 type Intake interface {
-	Write(p []byte) (int, error)        // a stream of text: lines become chunks
-	Append(data []byte) (uint64, error) // one chunk, whole
+	Write(p []byte) (int, error) // a stream of text: lines become chunks
+	Append(data []byte) error    // one chunk, whole
 }
 ```
 
-When `Append` returns without error the hub has accepted the data. That
-is the moment an input may confirm it to wherever it came from, and not
-before: an input that reads a queue deletes or acknowledges a message only
-then, so a message can arrive twice but is never lost on the way in.
+When `Append` returns without error the data is in the input of the hub.
+That is the moment a producer may confirm it to wherever it came from,
+and not before: a piece that reads a queue deletes or acknowledges a
+message only then, so a message can arrive twice but is never lost on the
+way in. Sending waits while the hub is held by a writer at its limit:
+that is what slows a producer down.
 
-### Consumers
+### Writers
 
 ```go
-type Consumer interface {
-	Write(batch []Chunk) error
-	Close() error
+type Writer interface {
+	Run(in <-chan Chunk) error
 }
 ```
 
-A consumer may be **persistent** (`quevu-txt`, `quevu-sqlite`) or
-**volatile** (the screen of the panel, `quevu-panel`; something that
-prints; something that counts). That is a property of the consumer, not
-something the hub is told. A hub queues chunks for each consumer and hands
-them over in batches from a goroutine per consumer, so a consumer is never
-called concurrently and never slows another one down.
+A writer is where a hub sends things. It receives from its channel until
+the channel is closed, and writes, sends or shows what arrives, or
+whatever it is it does: a text file (`quevu-txt`), a database
+(`quevu-sql`), the screen of the panel (`quevu-panel`), another machine
+(`quevu-forward`), something that prints, something that counts. It
+knows how to do nothing else. The hub gives every writer a channel and a
+goroutine of its own, so a writer is never called concurrently.
 
-A consumer that also implements `SeqConsumer` tells the hub the last
-position it holds, so positions stay unique across restarts.
+**Persistent or volatile is decided when the writer is connected**, not
+by the writer. The capacity of its channel is its limit, and at that
+limit the hub does one of two things:
+
+- it waits (persistent): nothing is lost, and everything else is held
+  back until the writer makes room. The hub says which writer it is
+  waiting for.
+- it skips the chunk for that writer (volatile): the writer misses a few
+  and nobody waits.
+
+Most stores work in batches. `Batcher` is that shape (`Write(batch)`,
+`Close()`), `Failures.Drain` is the loop that feeds one from a channel,
+and `Batches(b, max)` makes a writer of any batcher.
+
+A writer that also implements `SeqWriter` tells the hub the last position
+it holds, so positions stay unique across restarts.
 
 ### Providers
 
 That something consumes the output does not mean anything gives it back. A
-database that stores a log is a consumer; reading it is the work of a
+database that stores a log is a writer; reading it is the work of a
 **stored-data provider**, a piece of its own, attached on purpose.
 
 ```go
@@ -293,7 +331,7 @@ know which of the two is behind.
 
 ## Rules and gotchas
 
-- **Keep the borders.** A hub does not answer, a consumer does not know its
+- **Keep the borders.** A hub does not answer, a writer does not know its
   neighbours, a provider is not reached into: `quevu.Limit` and `Searcher`
   exist so terms are stated through interfaces. Nothing in this package
   looks at a concrete type from another module.
@@ -303,8 +341,8 @@ know which of the two is behind.
   run on the goroutine that caused the change.
 - **Add units before starting.** Order of `Add` is order of start.
 - **Register the hubs with `AddCloser`.** They close last, so the final
-  words of every unit reach their consumers; the sources close after them.
-- **`Chunk.Data` is read-only** once handed over: every consumer of a log
+  words of every unit reach their writers; the sources close after them.
+- **`Chunk.Data` is read-only** once handed over: every writer of a log
   receives the same slice.
 - **A failed `Stop` leaves the unit `Failed` and still started**, so it
   can be asked again.

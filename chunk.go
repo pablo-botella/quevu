@@ -8,12 +8,18 @@
 // The division of work is strict, and every interface here marks one of
 // its borders:
 //
-//   - A hub collects what the application writes and distributes it to
-//     its consumers. That is all it knows: it never answers a query.
-//     What flows through one hub is a log, the output of one piece.
-//   - A Consumer receives chunks and does with them what it sees fit. It
-//     may be persistent (a file, a database) or volatile (the panel).
-//   - A Provider gives chunks back, by position. That something consumes
+//   - A hub has one input channel and one or more output channels. It
+//     takes what arrives on the first, gives it a position, and sends it
+//     on every one of the others. That is all it knows: for a hub there
+//     are only channels, and it never answers a query. What flows through
+//     one hub is a log, the output of one piece.
+//   - A producer writes into the input channel of a hub: the application
+//     itself, or a piece that reads what was written somewhere else.
+//   - A Writer receives from one output channel and does its thing with
+//     what arrives: stores it, shows it, sends it on. It knows nothing
+//     else. Whether it is treated as persistent or volatile is decided
+//     when it is connected to the hub.
+//   - A Provider gives chunks back, by position. That something writes
 //     the output does not mean anything returns it: a provider is a piece
 //     of its own, attached on purpose, and it decides what it hands over.
 //   - A console keeps what it shows, and asks providers for the rest: an
@@ -22,22 +28,24 @@
 //
 // quevu does not solve the application's problems, it hands them out: the
 // application decides what stopping means and when it is safe, each
-// consumer decides what it does with what it receives, each provider
+// writer decides what it does with what it receives, each provider
 // decides what it gives, and a console only looks.
 //
-// This package has no dependencies. The hub itself, the consumers, the
+// This package has no dependencies. The hub itself, the writers, the
 // wire protocol and the visual part live in modules of their own and meet
 // here, through these interfaces.
 package quevu
 
 import (
-	"io"
+	"errors"
 	"time"
 )
 
-var _ io.Writer = Intake(nil)
+// ErrClosed is returned when something is sent to a hub that no longer
+// takes input.
+var ErrClosed = errors.New("quevu: hub closed")
 
-// Chunk is the unit of output: what is queued, positioned and asked for.
+// Chunk is the unit of output: what is positioned, sent and asked for.
 // A chunk is usually one line of text, but nothing requires it to be.
 type Chunk struct {
 	// Seq is the position of the chunk inside its log. It starts at 1,
@@ -50,51 +58,61 @@ type Chunk struct {
 	Data []byte
 }
 
-// Intake is the input end of a hub: where whatever reads data from
-// somewhere (a pipe, a queue) puts it, so that it follows the normal way
-// to the consumers. It is all an input piece knows of a hub.
-type Intake interface {
-	// Write takes a stream of text: every line becomes a chunk.
-	Write(p []byte) (int, error)
-	// Append takes data as one chunk, whatever it contains, and returns
-	// its position. When it returns without error the hub has accepted
-	// the data, which is the moment an input may confirm it to wherever
-	// it came from.
-	Append(data []byte) (uint64, error)
+// Entry is what a producer puts into the input channel of a hub: data on
+// its way to becoming a chunk. The hub gives it its position.
+type Entry struct {
+	// Data is the payload, whole: one entry is one chunk. It belongs to
+	// the hub once sent and must not be modified afterwards.
+	Data []byte
+	// Time is when the data was written, for a producer that brings it
+	// from somewhere that knew. Zero means now.
+	Time time.Time
 }
 
-// TimedIntake is an Intake that can be told when the data was written.
-// It is for inputs that bring data from somewhere that knew: what a
-// program wrote on another machine an hour ago should not look as if it
-// had been written now.
-type TimedIntake interface {
-	Intake
-	// AppendAt is Append with the time the data was originally written.
-	AppendAt(data []byte, at time.Time) (uint64, error)
-}
-
-// Consumer is a destination of a hub. The hub queues chunks for it and
-// hands them over in batches from a goroutine of its own, so a consumer
-// is never called concurrently and never slows down another one.
+// Input is the input end of a hub, and all a producer knows of it.
 //
-// What a consumer does with a batch is its own business: store it safely
-// and slowly, store it fast and at some risk, keep the last few for a
-// screen, or throw it away. Persistent or volatile is a property of the
-// consumer, not something the hub knows.
-type Consumer interface {
-	// Write takes a batch of consecutive chunks.
-	Write(batch []Chunk) error
-	// Close flushes and releases the consumer. It is called once, after
-	// the last Write.
-	Close() error
+// Any number of goroutines may send on In. Nobody closes it: a hub that
+// stops says so by closing Done, and whoever sends should stop then. An
+// Inlet does that for its callers.
+type Input interface {
+	// In is the channel a producer sends on.
+	In() chan<- Entry
+	// Done is closed when the hub takes no more input.
+	Done() <-chan struct{}
 }
 
-// SeqConsumer is implemented by consumers that know the last position
-// they hold, which in practice means the persistent ones. A hub starts
+// Writer is a destination of a hub: where the hub sends things. It
+// receives from its channel and writes, sends or shows what arrives, or
+// whatever it is it does. It knows how to do nothing else.
+//
+// A hub gives every writer a channel of its own and runs it in a
+// goroutine of its own, so a writer is never called concurrently. The
+// capacity of that channel is the limit of what may wait for the writer,
+// and what happens at the limit is the business of the hub, set when the
+// writer is connected: the hub waits, and everything else waits with it,
+// or the hub skips the chunk for this writer.
+type Writer interface {
+	// Run receives chunks, in order, until in is closed. It returns when
+	// everything received has been dealt with and the writer has released
+	// what it held. Returning earlier means the writer has given up: the
+	// hub stops sending to it.
+	Run(in <-chan Chunk) error
+}
+
+// SeqWriter is implemented by writers that know the last position they
+// hold, which in practice means the persistent ones. A hub starts
 // counting after the highest, so positions stay unique across restarts
 // of the application.
-type SeqConsumer interface {
+type SeqWriter interface {
 	LastSeq() (uint64, error)
+}
+
+// FailCounter is implemented by writers that can say, while they run,
+// how many chunks they could not deal with. A hub shows it next to what
+// it knows itself of the writer.
+type FailCounter interface {
+	// Failed returns the chunks lost so far and the last error.
+	Failed() (uint64, error)
 }
 
 // Provider gives chunks back, by position. It is all a console needs to
@@ -114,19 +132,22 @@ type Provider interface {
 	After(seq uint64, n int) ([]Chunk, error)
 }
 
-// ConsumerStats is the view of the queue between a hub and one consumer.
-// A queue is there to absorb bursts: one that keeps growing means the
-// consumer is too slow for the output it receives and should be replaced.
-type ConsumerStats struct {
-	Queued   int    // chunks waiting to be handed over
-	Capacity int    // capacity of the queue
-	Written  uint64 // chunks the consumer took
-	Dropped  uint64 // chunks discarded because the queue was full
-	Failed   uint64 // chunks lost in a failed Write
-	LastErr  error  // error of the last failed Write
+// WriterStats is the view of the channel between a hub and one writer.
+// A channel is there to absorb bursts: one that stays full means the
+// writer is too slow for the output it receives.
+type WriterStats struct {
+	Name     string // the name the writer was connected with
+	Queued   int    // chunks waiting in the channel
+	Capacity int    // capacity of the channel: the limit
+	Written  uint64 // chunks handed to the writer
+	Skipped  uint64 // chunks skipped for this writer because the channel was full
+	Waiting  bool   // the hub is held right now, waiting for this writer
+	Waits    uint64 // times the hub has had to wait for this writer
+	Failed   uint64 // chunks the writer could not deal with, or that found it gone
+	LastErr  error  // the last error of the writer
 }
 
-// StatSource is implemented by whatever can show the queues of a log.
+// StatSource is implemented by whatever can show the writers of a log.
 type StatSource interface {
-	Stats() []ConsumerStats
+	Stats() []WriterStats
 }
