@@ -30,4 +30,4 @@ everything else is a module of its own, taken only by who needs it:
 | `quevu-ui` | The window, as a dynamic library with a C interface (Rust) |
 | `quevu-ui-go` | Go binding to that library, without cgo |
 | `quevu-ctl` | `quevuctl`, the panel for an application running elsewhere |
-| `quevu-demo` | A small application that shows all of the above at work |
+| `quevu-examples` | A small application that shows all of the above at work |
