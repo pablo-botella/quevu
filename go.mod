@@ -1,3 +1,3 @@
-module github.com/pablo-botella/quevu-kernel
+module github.com/pablo-botella/quevu
 
 go 1.23

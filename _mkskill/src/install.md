@@ -7,7 +7,7 @@ mkskill:
 ## Install
 
 ```
-go get github.com/pablo-botella/quevu-kernel
+go get github.com/pablo-botella/quevu
 ```
 
 This module has no dependencies. It holds the contracts, the hub and the
@@ -16,7 +16,7 @@ it:
 
 | Module | What it is |
 |---|---|
-| `quevu-kernel` | Contracts, the hub (`quevu.QHub`) and lifecycle coordination (this module) |
+| `quevu` | Contracts, the hub (`quevu.QHub`) and lifecycle coordination (this module) |
 | `quevu-panel` | The panel as a volatile writer: the screen of a log |
 | `quevu-txt` | Persistent writer over a text file, and its stored-data provider |
 | `quevu-sql` | Persistent writers over SQL databases (SQLite, MySQL), and their stored-data providers |

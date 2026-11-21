@@ -1,10 +1,8 @@
-# quevu-kernel - agent notes
+# quevu - agent notes
 
-Go module `github.com/pablo-botella/quevu-kernel`, **package `quevu`**
-(the import carries the alias: `quevu "github.com/pablo-botella/quevu-kernel"`).
-The name `quevu` alone is kept for the application. Here live the contracts of the quevu
-control panel and the coordination of an application's lifecycle. No
-dependencies. Every other `quevu-*` module imports this one and none is
+Go module `github.com/pablo-botella/quevu`, package `quevu`: the kernel.
+Here live the hub (`QHub`), the contracts of the quevu control panel and
+the coordination of an application's lifecycle. No dependencies. Every other `quevu-*` module imports this one and none is
 imported by it.
 
 Design principle to respect in any change: quevu hands problems out, it

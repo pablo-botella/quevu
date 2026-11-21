@@ -4,14 +4,15 @@ mkskill:
   in: readme
 ---
 
-# quevu-kernel
+# quevu
 
 The kernel of **quevu**, a control panel for Go applications (the name
-comes from *queue view*): the contracts every other `quevu-*` module is
-built on, and nothing else. The package is named `quevu`:
+comes from *queue view*): the hub and the contracts every other `quevu-*`
+module is built on. Whatever brings a visual part or a transport is a
+module of its own.
 
 ```go
-import quevu "github.com/pablo-botella/quevu-kernel"
+import "github.com/pablo-botella/quevu"
 ```
 
 An application made of several pieces (a web server, a mailer, a periodic

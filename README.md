@@ -1,11 +1,12 @@
-# quevu-kernel
+# quevu
 
 The kernel of **quevu**, a control panel for Go applications (the name
-comes from *queue view*): the contracts every other `quevu-*` module is
-built on, and nothing else. The package is named `quevu`:
+comes from *queue view*): the hub and the contracts every other `quevu-*`
+module is built on. Whatever brings a visual part or a transport is a
+module of its own.
 
 ```go
-import quevu "github.com/pablo-botella/quevu-kernel"
+import "github.com/pablo-botella/quevu"
 ```
 
 An application made of several pieces (a web server, a mailer, a periodic
@@ -41,7 +42,7 @@ gives back, and a console only looks.
 ## Install
 
 ```
-go get github.com/pablo-botella/quevu-kernel
+go get github.com/pablo-botella/quevu
 ```
 
 This module has no dependencies. It holds the contracts, the hub and the
@@ -50,7 +51,7 @@ it:
 
 | Module | What it is |
 |---|---|
-| `quevu-kernel` | Contracts, the hub (`quevu.QHub`) and lifecycle coordination (this module) |
+| `quevu` | Contracts, the hub (`quevu.QHub`) and lifecycle coordination (this module) |
 | `quevu-panel` | The panel as a volatile writer: the screen of a log |
 | `quevu-txt` | Persistent writer over a text file, and its stored-data provider |
 | `quevu-sql` | Persistent writers over SQL databases (SQLite, MySQL), and their stored-data providers |
