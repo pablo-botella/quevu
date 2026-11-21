@@ -31,9 +31,10 @@
 // writer decides what it does with what it receives, each provider
 // decides what it gives, and a console only looks.
 //
-// This package has no dependencies. The hub itself, the writers, the
-// wire protocol and the visual part live in modules of their own and meet
-// here, through these interfaces.
+// This package has no dependencies. The hub is here (QHub), because it
+// makes no sense anywhere else. The writers, the transports and the visual
+// part live in modules of their own and meet here, through these
+// interfaces.
 package quevu
 
 import (

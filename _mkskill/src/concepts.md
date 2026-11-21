@@ -86,7 +86,7 @@ The division of work is strict. Each interface marks one of its borders.
 
 | Piece | Its work | What it does not know |
 |---|---|---|
-| A hub (`quevu-hub`) | One input channel, one output channel per writer: takes what arrives, gives it a position, sends it on. Never answers a query | Anything else: only channels. Not what a writer does, not that screens exist |
+| A hub (`quevu.QHub`) | One input channel, one output channel per writer: takes what arrives, gives it a position, sends it on. Never answers a query | Anything else: only channels. Not what a writer does, not that screens exist |
 | A **Writer** | Receives chunks from its channel and does its thing with them | Who else receives them, or whether the hub waits for it |
 | A **Provider** | Gives chunks back by position, and decides what it gives | Who stored them |
 | A console | Keeps what it shows; asks providers for the rest | Where anything is kept |

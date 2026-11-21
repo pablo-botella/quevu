@@ -10,13 +10,13 @@ mkskill:
 go get github.com/pablo-botella/quevu-kernel
 ```
 
-This module has no dependencies. It holds the contracts and the lifecycle;
-everything else is a module of its own, taken only by who needs it:
+This module has no dependencies. It holds the contracts, the hub and the
+lifecycle; everything else is a module of its own, taken only by who needs
+it:
 
 | Module | What it is |
 |---|---|
-| `quevu-kernel` | Contracts and lifecycle coordination (this module) |
-| `quevu-hub` | The control element: one input channel, one output channel per writer; takes, numbers and sends on |
+| `quevu-kernel` | Contracts, the hub (`quevu.QHub`) and lifecycle coordination (this module) |
 | `quevu-panel` | The panel as a volatile writer: the screen of a log |
 | `quevu-txt` | Persistent writer over a text file, and its stored-data provider |
 | `quevu-sql` | Persistent writers over SQL databases (SQLite, MySQL), and their stored-data providers |

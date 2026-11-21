@@ -4,7 +4,7 @@
     <meta>
       <module>github.com/pablo-botella/quevu-kernel</module>
       <license>MIT</license>
-      <description>Control panel core for Go applications: an orderly start and stop of the pieces an application is made of (Unit, Panel) and the contracts of a log mechanism that keeps each output apart and serves it by position (Chunk, Provider, Device, Feed, Source, Controller). Use when working with github.com/pablo-botella/quevu-kernel or any of the quevu-* modules, or when a Go application needs a graceful shutdown coordinated across several pieces.</description>
+      <description>Control panel core for Go applications: an orderly start and stop of the pieces an application is made of (Unit, Panel) and a log mechanism that keeps each output apart and serves it by position: the hub (QHub) and its contracts (Chunk, Writer, Provider, Feed, Source, Controller). Use when working with github.com/pablo-botella/quevu-kernel or any of the quevu-* modules, or when a Go application needs a graceful shutdown coordinated across several pieces.</description>
     </meta>
   </project>
 </mkskill>
