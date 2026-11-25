@@ -1,0 +1,348 @@
+---
+mkskill:
+  pos: 100
+  in: "*"
+---
+
+## Lifecycle
+
+A **unit** is one piece of the application. It is the only thing pieces of
+very different natures have in common:
+
+```go
+type Unit interface {
+	Start(ctx context.Context) error // launch and return; do not block
+	Stop(ctx context.Context) error  // return when it is safe: work in hand finished
+}
+```
+
+The application implements it, and with it decides what stopping means and
+when it is safe. Four ways to get one:
+
+```go
+panel.Add("web", srv)                       // a type of your own
+panel.Add("cache", qkernel.Func(open, close)) // two functions
+panel.Add("mailer", qkernel.Go(func(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil // nothing in hand: stopped
+		case msg := <-queue:
+			send(msg) // in hand: finished whatever ctx says
+		}
+	}
+}))
+```
+
+`qkernel.Go` wraps a function that runs for the life of the piece: `Stop`
+cancels its context and waits for it to return. How to wind down is written
+inside the function, which is where the knowledge is.
+
+Not every piece is a loop. Some are **work launched on demand**: the
+report a user asked for, the payment a request started, each in a
+goroutine of its own. There is nothing to tell to stop; there is work
+that began and must be allowed to end. That is `qkernel.Work`:
+
+```go
+payments := qkernel.NewWork()
+panel.Add("payments", payments)
+
+// in the handler
+if !payments.Accepting() {
+	http.Error(w, "stopping: try again later", http.StatusServiceUnavailable)
+	return
+}
+payments.Go(func() { charge(order) }) // instead of: go charge(order)
+```
+
+Stopping it means no new jobs, and waiting for the ones running. A job
+is never cut from there: if the time given runs out, `Stop` returns the
+error and the job goes on. What the user is told when work is refused is
+the application's to decide.
+
+A **Panel** holds the units. It starts them in the order they were added
+and stops them in reverse. `StopAll` asks every unit even if one fails, and
+joins the errors. A unit that ends by itself (see `Exiter`) is noticed and
+shown as stopped or failed.
+
+- `Start`, `Stop`: one unit. `StartAll`, `StopAll`: the global switch.
+- `Units`, `Watch`: the state of every unit, and every change of it.
+- `AddCloser`: the logs, closed once every unit has stopped.
+- `AddSource`: what a console shows in a tab.
+- `Shutdown`: `StopAll` within `StopTimeout`, then `Close`.
+- `Run`: start everything, wait for `ctx` or for the system to ask the
+  process to end, then `Shutdown`. The whole life of an application with no
+  window.
+
+The context given to `Stop` is how long the caller is willing to wait. When
+it expires `Stop` returns its error and the unit is left as `Failed`, not
+as stopped: quevu never pretends something stopped. The operating system
+has a limit of its own when it stops a service; a long orderly stop has to
+fit in it or raise it.
+
+## Output: who does what
+
+The division of work is strict. Each interface marks one of its borders.
+
+| Piece | Its work | What it does not know |
+|---|---|---|
+| A hub (`qkernel.QHub`) | One input channel, one output channel per writer: takes what arrives, gives it a position, sends it on. Never answers a query | Anything else: only channels. Not what a writer does, not that screens exist |
+| A **Writer** | Receives chunks from its channel and does its thing with them | Who else receives them, or whether the hub waits for it |
+| A **Provider** | Gives chunks back by position, and decides what it gives | Who stored them |
+| A console | Keeps what it shows; asks providers for the rest | Where anything is kept |
+
+What flows through one hub is a **log**: the output of one piece, in the
+order it was written. The hub is the element; the log is what it carries.
+
+A **Chunk** is the unit of output: what is positioned, sent and asked
+for. Usually a line, not necessarily.
+
+```go
+type Chunk struct {
+	Seq  uint64    // position in its log: from 1, plus one per chunk
+	Time time.Time // when it entered the log
+	Data []byte
+}
+```
+
+`Seq` is the same for whoever holds the chunk, which is what lets a reader
+move from recent output to stored output without a seam.
+
+### Producers
+
+A producer is whatever writes into the input channel of a hub: the
+application itself, or a piece that reads what was written somewhere
+else, like the output of another program through a pipe (`quevu-pipe`),
+the event log of the system (`quevu-syslog`) or a cloud queue
+(`quevu-sqs`, `quevu-pubsub`). Such a piece is a unit like any other,
+started and stopped with the application. All a producer knows of a hub
+is its input end:
+
+```go
+type Entry struct {
+	Data []byte    // one entry is one chunk
+	Time time.Time // when it was written, if the producer knows; zero is now
+}
+
+type Input interface {
+	In() chan<- Entry      // any number of goroutines may send
+	Done() <-chan struct{} // closed when the hub takes no more
+}
+```
+
+Nobody closes the input channel: with several senders, closing is the
+one thing that cannot be shared. A hub that stops closes `Done` instead.
+
+An **Inlet** is the same input for code that does not want a channel.
+`NewInlet(hub)` is an `io.Writer`, so the standard logger, `log/slog` or
+`fmt.Fprintf` can write to it (every line is an entry), and it has the
+two methods a reading piece needs:
+
+```go
+type Intake interface {
+	Write(p []byte) (int, error) // a stream of text: lines become chunks
+	Append(data []byte) error    // one chunk, whole
+}
+```
+
+When `Append` returns without error the data is in the input of the hub.
+That is the moment a producer may confirm it to wherever it came from,
+and not before: a piece that reads a queue deletes or acknowledges a
+message only then, so a message can arrive twice but is never lost on the
+way in. Sending waits while the hub is held by a writer at its limit:
+that is what slows a producer down.
+
+### Writers
+
+```go
+type Writer interface {
+	Run(in <-chan Chunk) error
+}
+```
+
+A writer is where a hub sends things. It receives from its channel until
+the channel is closed, and writes, sends or shows what arrives, or
+whatever it is it does: a text file (`quevu/qtxt`), a database
+(`quevu-sql`), the screen of the panel (`quevu/qpanel`), another machine
+(`quevu-forward`), something that prints, something that counts. It
+knows how to do nothing else. The hub gives every writer a channel and a
+goroutine of its own, so a writer is never called concurrently.
+
+**Persistent or volatile is decided when the writer is connected**, not
+by the writer. The capacity of its channel is its limit, and at that
+limit the hub does one of two things:
+
+- it waits (persistent): nothing is lost, and everything else is held
+  back until the writer makes room. The hub says which writer it is
+  waiting for.
+- it skips the chunk for that writer (volatile): the writer misses a few
+  and nobody waits.
+
+Most stores work in batches. `Batcher` is that shape (`Write(batch)`,
+`Close()`), `Failures.Drain` is the loop that feeds one from a channel,
+and `Batches(b, max)` makes a writer of any batcher.
+
+A writer that also implements `SeqWriter` tells the hub the last position
+it holds, so positions stay unique across restarts.
+
+### Providers
+
+That something consumes the output does not mean anything gives it back. A
+database that stores a log is a writer; reading it is the work of a
+**stored-data provider**, a piece of its own, attached on purpose.
+
+```go
+type Provider interface {
+	Tail(n int) ([]Chunk, error)
+	Before(seq uint64, n int) ([]Chunk, error)
+	After(seq uint64, n int) ([]Chunk, error)
+}
+```
+
+Every method returns at most `n` chunks. Fewer, or none, is the provider's
+right, and is not questioned: an empty answer means there is nothing
+further that way as far as that provider is concerned.
+
+`qkernel.Limit` is how a provider states its terms without each
+implementation growing the same options:
+
+```go
+history := qkernel.Limit(reader, qkernel.Limits{
+	Page:         500,            // at most this many per request
+	MaxAge:       24 * time.Hour, // nothing older than this
+	SearchBudget: 20_000,         // a search step examines no more
+	NoSearch:     false,          // or refuse to be searched at all
+})
+```
+
+### A console's providers, and their roles
+
+A console escalates in three steps, and only the first two happen by
+themselves:
+
+1. **Its own memory**: what its screen remembers.
+2. **The immediate provider**, automatically, as soon as it needs
+   something the screen no longer has.
+3. **The historical provider**, only on its user's request. A console
+   that runs out of recent output says so and offers the history, if one
+   is configured. It never goes there on its own.
+
+A role is given by configuration, not by class. Nothing in a provider
+says which one it plays, and the same kind can be set up twice to play
+both:
+
+```go
+src := qkernel.Join(screen, qkernel.Roles{
+	Immediate:  liveReader,    // a reader over the live table
+	Historical: archiveReader, // the same kind of reader, over the archives
+})
+panel.AddSource(src)
+```
+
+Either role may be left empty. With neither, the screen is all there is.
+
+There is **one** historical provider as far as a console is concerned. If
+the history lives in several places it is an aggregator that knows them;
+the console never does:
+
+```go
+history := qkernel.Aggregate(year2024, year2025, liveTable) // oldest first
+```
+
+`Aggregate` answers a request by asking as many parts as it takes, in the
+order the direction calls for. Parts may overlap; a chunk held by two is
+given once. A part out of reach does not hide the others.
+## Feeds: two one-way lanes
+
+A feed connects one console to one source. `Data` brings deliveries down,
+`Req` takes requests up; the two never mix.
+
+```go
+f := src.Subscribe(0)
+f.Req <- qkernel.Request{Op: qkernel.OpFollow, N: 200} // last 200, then live
+for d := range f.Data {
+	switch d.Op {
+	case qkernel.OpFollow: // replaces what the console shows
+	case qkernel.OpLive:   // new chunks
+	case qkernel.OpPause:  // the "do not disturb" sign; d.Full if the source hung it
+	}
+}
+```
+
+- A feed is born paused. `OpFollow` starts it, and resumes it after a
+  pause: it does not catch up with what it missed, it jumps to the end.
+- `OpPause` hangs the *do not disturb* sign. While it hangs, the source
+  sends nothing live to this feed.
+- If the console falls behind and its buffer fills, the source hangs the
+  sign by itself and says so with `Delivery{Op: OpPause, Full: true}`. The
+  source never waits for a console.
+- `OpBefore` and `OpAfter` move by position through recent output. An
+  answer to `OpBefore` that comes back short means recent output ends
+  there; if it carries `History`, a history exists and may be offered.
+- `OpHistoryBefore` and `OpHistoryAfter` are the same through the
+  history. A console sends them only after its user asked. Walking
+  forwards out of the history into recent output needs no permission.
+
+## Searching
+
+A log may hold millions of chunks, so a search is never "the whole log".
+It is a **step**: it starts at a position, walks one way, examines a
+bounded number of chunks and stops, saying how far it got. Whoever asked
+decides whether to take another step from there.
+
+```go
+res, err := qkernel.Search(src, qkernel.Query{
+	Text:   "timeout",
+	From:   0,       // going backwards, zero is the end of the log
+	Budget: 100_000, // chunks examined, found or not
+	Since:  monday,  // optional: only what entered the log in this range
+	Until:  tuesday,
+})
+if len(res.Matches) == 0 && !res.Done {
+	// Nothing in this stretch. res.Reached and res.ReachedTime say how
+	// far back it looked; the next step starts at res.Reached.
+}
+```
+
+- The match ignores case and ignores ANSI color sequences: it is made
+  against the text as a console shows it (`qkernel.PlainText`), so a phrase
+  is found even when a change of color falls in the middle of it.
+- `Search` asks the provider if it knows how to search itself
+  (`Searcher`); otherwise it reads it page by page (`Scan`), which works
+  for any provider and costs what the budget says.
+- A joined source searches each piece through that piece's own interface
+  and on its terms: the screen, then the immediate provider. The history
+  is searched only when `Query.History` is set, which means the user
+  asked; otherwise a step that runs out of recent output returns with
+  `Result.History` set, as an offer, and stops.
+- `Since` and `Until` bound the search in time. A step that walks past
+  the far bound stops there with `OutOfRange`: chunks are in the order
+  they were written, so nothing beyond it can be in range, in this
+  provider or in any older one. The history is then not offered.
+- `Done` means the step ran out of log, not out of budget.
+
+## Controller
+
+`Controller` is the panel as a visual part sees it: units, switches, a way
+to watch changes, and the sources. `*Panel` implements it in the
+application's process and the `quevu-wire` client implements it at the
+other end of a connection. A window talks to the interface and does not
+know which of the two is behind.
+
+## Rules and gotchas
+
+- **Keep the borders.** A hub does not answer, a writer does not know its
+  neighbours, a provider is not reached into: `qkernel.Limit` and `Searcher`
+  exist so terms are stated through interfaces. Nothing in this package
+  looks at a concrete type from another module.
+- **`Unit.Start` must not block** for the life of the piece. Launch and
+  return; use `qkernel.Go` for a function that runs until told.
+- **`Watch` callbacks must not block** nor call back into the panel: they
+  run on the goroutine that caused the change.
+- **Add units before starting.** Order of `Add` is order of start.
+- **Register the hubs with `AddCloser`.** They close last, so the final
+  words of every unit reach their writers; the sources close after them.
+- **`Chunk.Data` is read-only** once handed over: every writer of a log
+  receives the same slice.
+- **A failed `Stop` leaves the unit `Failed` and still started**, so it
+  can be asked again.
