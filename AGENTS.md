@@ -885,9 +885,9 @@ of the desktop it is on. What it does is the same, but for this:
 
 - **The icon in the notification area exists on Windows only.** The
   desktops of Linux do not agree on one, and on macOS it is not written
-  yet. There `Tray` does nothing, and `WithTray` is left out: closing the
-  window means exiting, since there would be nowhere to bring it back
-  from.
+  yet. There `Tray` and the setting `TrayBehavior` do nothing, and
+  `WithTray` is left out: closing the window means exiting, since there
+  would be nowhere to bring it back from.
 - **The range of time of a search** is picked in two date and time
   controls on Windows; on Linux and macOS it is typed in two boxes, as
   `2025-03-14 16:05:00` or the day alone.
@@ -913,7 +913,9 @@ when it first shows.
 | `Quit()` | Closes the window. The only way it goes away |
 | `OnReady(fn)` | Runs `fn` once the window is on the screen. Never runs if it cannot be created |
 | `OnClose(fn)` | Runs `fn` every time the user asks to close. The window stays until `Quit`. With none set, asking closes |
-| `Show(visible)`, `Tray(on)` | Hides or shows the window; an icon in the notification area to hide in |
+| `Show(visible)` | Hides or shows the window |
+| `Settings(id, value)` | Says how the window behaves from now on. See below |
+| `Tray(on)` | An icon in the notification area to hide in when minimized: `Settings(TrayBehavior, MinimizeToTray)`, or zero |
 | `SetText(id, text)` | Changes one of the texts of the window |
 | `SetStats(every, format)` | How often, and how, the queues of a log are shown in the strip of its tab |
 | `SetFindBudget(chunks)` | How many chunks one step of a search may examine (default 100,000) |
@@ -921,6 +923,30 @@ when it first shows.
 Closing is an event like any other. Nothing stops in order unless the
 application does it in `OnClose` before calling `Quit`, and nothing stops
 it from calling `Quit` at once: orderly or abrupt is its choice.
+
+### Settings
+
+How the window behaves is the application's to say, in messages of a
+setting and its value:
+
+```go
+w.Settings(qui.TrayBehavior, qui.MinimizeToTray|qui.CloseToTray)
+w.Settings(qui.TrayBehavior, 0) // as a window starts: no icon
+```
+
+- A setting may be sent at any time, before the window shows or while it
+  runs, and as often as wanted: the last value stands. An application
+  that keeps its configuration somewhere slow to reach shows the window
+  first and sends the settings when it has them.
+- The window stores nothing from one run to the next. Where a value is
+  kept is the application's business.
+- `TrayBehavior` takes `MinimizeToTray`, `CloseToTray`, both or zero.
+  While any is set there is an icon in the notification area, with the
+  menu of `TrayMenu`. With `MinimizeToTray` minimizing hides the window
+  there; with `CloseToTray` so does asking to close it, and `OnClose` is
+  not called. A window hidden there comes back when the value goes to
+  zero.
+- A setting this version does not know is ignored.
 
 ### Tabs
 
@@ -971,6 +997,10 @@ c.Remove()
 - A state with no verbs is one the user can only look at.
 - `Hollow` draws the light as a ring: it is off. `Disabled` shows a verb
   that cannot be pressed.
+- `Checkable` draws a verb with a box in front of its words, and
+  `Checked` marks the box. It is a button like any other: pressing it
+  runs `Do` and moves nothing, and the mark is the application's to move
+  by setting the verbs again.
 - `Do` runs on a goroutine of its own. The button does nothing else: the
   application calls `Set` with what the control shows next.
 - A control whose verbs do not change keeps its buttons as they are, so

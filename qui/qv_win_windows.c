@@ -1367,10 +1367,15 @@ static int apply(app *a, qv_cmd *c)
             apply_texts(a);
         }
         break;
-    case QV_TRAY:
-        a->tray = c->full;
-        tray_icon(a, c->full);
+    case QV_TRAY: {
+        int was = a->tray_shown;
+        a->tray = (int)c->a;
+        tray_icon(a, a->tray != 0);
+        /* Hidden there, with the icon gone, nothing would bring it back. */
+        if (was && !a->tray_shown && !IsWindowVisible(a->hwnd))
+            restore(a);
         break;
+    }
     case QV_SHOW:
         if (c->full)
             restore(a);
@@ -1497,7 +1502,7 @@ static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
         return 0;
     case WM_SIZE:
         /* Minimizing with a tray icon means "get out of the way". */
-        if (wparam == SIZE_MINIMIZED && a->tray)
+        if (wparam == SIZE_MINIMIZED && (a->tray & QUEVU_TRAY_MINIMIZE) && a->tray_shown)
             ShowWindow(hwnd, SW_HIDE);
         else
             layout(a);
@@ -1553,9 +1558,14 @@ static LRESULT CALLBACK main_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
     case WM_CLOSE:
         /*
          * Closing is the host's decision: it hears the request and, when
-         * it sees fit, tells this window to go.
+         * it sees fit, tells this window to go. Unless it said that
+         * closing is going to the notification area: then nobody is
+         * asked.
          */
-        qv_emit(QUEVU_EV_CLOSE, 0, 0, 0, 0);
+        if ((a->tray & QUEVU_TRAY_CLOSE) && a->tray_shown)
+            ShowWindow(hwnd, SW_HIDE);
+        else
+            qv_emit(QUEVU_EV_CLOSE, 0, 0, 0, 0);
         return 0;
     case WM_DESTROY:
         tray_icon(a, 0);

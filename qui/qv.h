@@ -155,7 +155,7 @@ enum {
     QV_MENU_SET,        /* id, text: label, b: attrs                      */
     QV_MENU_REMOVE,     /* id                                             */
     QV_TEXT,            /* id, text                                       */
-    QV_TRAY,            /* full: enabled                                  */
+    QV_TRAY,            /* a: QUEVU_TRAY_* bits                           */
     QV_CONSOLE_TIME,    /* id: tab, full: on                              */
     QV_GOTO,            /* id: tab, lines, seq: mark, history             */
     QV_FIND_STATUS,     /* id: tab, text, seq: resume, history            */

@@ -121,7 +121,7 @@ func uiMenuSet(item uint32, label string, attrs uint32) {
 
 func uiMenuRemove(item uint32) { C.quevu_ui_menu_remove(C.uint32_t(item)) }
 
-func uiTray(enabled uint32) { C.quevu_ui_tray(C.uint32_t(enabled)) }
+func uiSetting(id, value uint32) { C.quevu_ui_setting(C.uint32_t(id), C.uint32_t(value)) }
 
 func uiShow(visible uint32) { C.quevu_ui_show(C.uint32_t(visible)) }
 

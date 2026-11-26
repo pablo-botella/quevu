@@ -30,7 +30,7 @@ func uiConsoleTime(_, _ uint32)                           {}
 func uiMenuAdd(uint32, string, uint32) uint32             { return 0 }
 func uiMenuSet(uint32, string, uint32)                    {}
 func uiMenuRemove(uint32)                                 {}
-func uiTray(uint32)                                       {}
+func uiSetting(_, _ uint32)                               {}
 func uiShow(uint32)                                       {}
 func uiFindText(uint32) string                            { return "" }
 func uiFindRange(uint32) (int64, int64)                   { return 0, 0 }

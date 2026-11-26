@@ -227,11 +227,63 @@ func TestTheWindowIsWhatTheApplicationSays(t *testing.T) {
 		t.Fatal("the window closed by itself")
 	}
 
+	// A verb with a box is a button like any other: it is only told, and
+	// its mark is the application's to move.
+	services.Select()
+	services.SetVerbs(Verb{Label: "To tray", Do: say("to tray"), Checkable: true})
+	click(waitButton(t, top, "☐ To tray", true))
+	expect(t, said, "to tray")
+	if button(top, "☑ To tray") != 0 {
+		t.Fatal("pressing the verb marked its box")
+	}
+	services.SetVerbs(Verb{Label: "To tray", Do: say("to tray"), Checked: true})
+	waitButton(t, top, "☑ To tray", true)
+	shot(top, "5-checked")
+
+	// Told that closing is going to the notification area, the window
+	// hides and asks nobody. Commands keep their order, so once the note
+	// reads as said the setting before it is in force.
+	w.Settings(TrayBehavior, MinimizeToTray|CloseToTray)
+	services.SetNote("to the tray")
+	static(t, top, "to the tray")
+	askToClose(top)
+	waitVisible(t, top, false)
+	select {
+	case s := <-said:
+		t.Fatalf("closing to the tray said %q", s)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// Hidden there, it comes back when the icon goes; and from then on
+	// closing asks again.
+	w.Settings(TrayBehavior, 0)
+	waitVisible(t, top, true)
+	askToClose(top)
+	expect(t, said, "close")
+
+	// Minimizing goes there only when that is what was said.
+	w.Settings(TrayBehavior, CloseToTray)
+	services.SetNote("close only")
+	static(t, top, "close only")
+	minimize(top)
+	time.Sleep(200 * time.Millisecond)
+	if !visible(top) {
+		t.Fatal("minimizing hid the window, and only closing should")
+	}
+	w.Show(true)
+	w.Settings(TrayBehavior, MinimizeToTray)
+	services.SetNote("minimize only")
+	static(t, top, "minimize only")
+	minimize(top)
+	waitVisible(t, top, false)
+	w.Tray(false)
+	waitVisible(t, top, true)
+
 	// With nothing on it the window is still a window.
 	services.Close()
 	logTab.Close()
 	waitTabs(t, top)
-	shot(top, "5-empty")
+	shot(top, "6-empty")
 
 	// It goes when the application says so.
 	w.Quit()

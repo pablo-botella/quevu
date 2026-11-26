@@ -46,9 +46,11 @@ var (
 )
 
 const (
-	wmClose   = 0x0010
-	wmCommand = 0x0111
-	bmClick   = 0x00f5
+	wmClose      = 0x0010
+	wmCommand    = 0x0111
+	wmSysCommand = 0x0112
+	scMinimize   = 0xf020
+	bmClick      = 0x00f5
 
 	tcmGetItemCount = 0x1304
 	tcmGetItemW     = 0x133c
@@ -277,6 +279,21 @@ func choose(top uintptr, l menuLine) { procPostMessage.Call(top, wmCommand, uint
 
 // askToClose does what the cross of the window does.
 func askToClose(top uintptr) { procPostMessage.Call(top, wmClose, 0, 0) }
+
+// minimize asks the window to minimize, the way its box in the title bar
+// does.
+func minimize(top uintptr) { procPostMessage.Call(top, wmSysCommand, scMinimize, 0) }
+
+// waitVisible waits for the window to be on the screen, or to be hidden.
+func waitVisible(t *testing.T, top uintptr, want bool) {
+	t.Helper()
+	for i := 0; visible(top) != want; i++ {
+		if i > 500 {
+			t.Fatalf("the window is visible: %v, want %v", !want, want)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
 
 type bitmapInfoHeader struct {
 	size          uint32

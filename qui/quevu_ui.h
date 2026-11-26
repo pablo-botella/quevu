@@ -42,7 +42,7 @@ extern "C" {
 #endif
 
 /* Version of this interface, as returned by quevu_ui_abi. */
-#define QUEVU_UI_ABI 5u
+#define QUEVU_UI_ABI 6u
 
 /* Operations of a feed: what a console asks for and what it is given. */
 #define QUEVU_OP_LIVE   1u /* new chunks, while the console follows      */
@@ -73,7 +73,9 @@ extern "C" {
 #define QUEVU_LIGHT_BLINK  1u /* the light goes on and off               */
 #define QUEVU_LIGHT_HOLLOW 2u /* the light is drawn as a ring: it is off */
 
-#define QUEVU_VERB_DISABLED 1u /* shown, but cannot be pressed           */
+#define QUEVU_VERB_DISABLED  1u /* shown, but cannot be pressed          */
+#define QUEVU_VERB_CHECKABLE 2u /* carries a box: something on or off    */
+#define QUEVU_VERB_CHECKED   4u /* the box is marked: it is on           */
 
 #define QUEVU_MENU_SEPARATOR 1u /* a line between entries; no label      */
 #define QUEVU_MENU_CHECKED   2u /* carries the mark of something on      */
@@ -106,6 +108,17 @@ extern "C" {
 #define QUEVU_TEXT_MENU_FIND_OLDER 14u /* tab menu: next match, older        */
 #define QUEVU_TEXT_MENU_FIND_NEWER 15u /* tab menu: next match, newer        */
 #define QUEVU_TEXT_MENU_TIME       16u /* tab menu: show the time of a line  */
+
+/*
+ * Settings: how the window behaves, as the host says with
+ * quevu_ui_setting. Each has a number and a value of its own; a number
+ * this version does not know is ignored.
+ */
+#define QUEVU_SETTING_TRAY 1u /* value: QUEVU_TRAY_*; zero, no icon      */
+
+/* What goes to the notification area, for QUEVU_SETTING_TRAY. */
+#define QUEVU_TRAY_MINIMIZE 1u /* minimizing the window hides it there   */
+#define QUEVU_TRAY_CLOSE    2u /* so does asking to close it             */
 
 /*
  * Kinds of event. Numbers 2 to 5 belonged to the fixed switches of
@@ -202,6 +215,10 @@ void quevu_ui_tab_note(uint32_t tab, const char *note);
  * Sets the verbs of a control tab as a whole: the buttons of its bar, in
  * the order given. Pressing one sends QUEVU_EV_TAB_VERB. The list
  * replaces the one before it; verbs may be null when n is zero.
+ *
+ * A verb with QUEVU_VERB_CHECKABLE or QUEVU_VERB_CHECKED is drawn with a
+ * box, marked or not. It is a button like any other: pressing it sends
+ * its event and moves nothing, and the mark is the host's to move.
  */
 void quevu_ui_tab_verbs(uint32_t tab, const quevu_ui_verb *verbs, uint32_t n);
 
@@ -318,9 +335,25 @@ void quevu_ui_menu_set(uint32_t item, const char *label, uint32_t attrs);
 void quevu_ui_menu_remove(uint32_t item);
 
 /*
- * Turns the icon in the notification area on or off. While it is on,
- * minimizing the window hides it there. Its menu is the one the host
- * hangs from QUEVU_MENU_TRAY.
+ * Sets how the window behaves from now on: id is a QUEVU_SETTING_* and
+ * value what that setting takes. It may be called at any time and as
+ * often as the host wants; the last value stands. Until the host says
+ * otherwise every setting is zero.
+ *
+ * QUEVU_SETTING_TRAY takes the bits QUEVU_TRAY_*. While any is set there
+ * is an icon in the notification area, whose menu is the one the host
+ * hangs from QUEVU_MENU_TRAY. With QUEVU_TRAY_MINIMIZE, minimizing the
+ * window hides it there. With QUEVU_TRAY_CLOSE so does asking to close
+ * it, and no QUEVU_EV_CLOSE is sent. A window hidden there comes back
+ * when the setting goes to zero. Where the system has no notification
+ * area the setting does nothing: the window minimizes and asks to be
+ * closed as it always does.
+ */
+void quevu_ui_setting(uint32_t id, uint32_t value);
+
+/*
+ * Turns the icon in the notification area on or off: the same as setting
+ * QUEVU_SETTING_TRAY to QUEVU_TRAY_MINIMIZE or to zero.
  */
 void quevu_ui_tray(uint32_t enabled);
 

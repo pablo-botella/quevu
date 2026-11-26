@@ -216,6 +216,28 @@ void qv_find_range(uint32_t tab, int64_t *since_ns, int64_t *until_ns)
 
 /* ---- quevu_ui.h ---- */
 
+/*
+ * The words of a verb as the window draws them. One that carries a box
+ * has it in front of its words, so it is the same on every system and a
+ * mark that moves is a label that changed.
+ */
+static uint16_t *verb_label(const char *label, uint32_t attrs)
+{
+    uint16_t *words = qv_utf8_to_wide(label), *out;
+    size_t    n = 0;
+
+    if (!(attrs & (QUEVU_VERB_CHECKABLE | QUEVU_VERB_CHECKED)) || !words)
+        return words;
+    while (words[n])
+        n++;
+    out = qv_alloc((n + 3) * sizeof *out);
+    out[0] = (attrs & QUEVU_VERB_CHECKED) ? 0x2611 : 0x2610; /* ballot box, marked or empty */
+    out[1] = ' ';
+    memcpy(out + 2, words, (n + 1) * sizeof *out);
+    free(words);
+    return out;
+}
+
 static void verbs_from(qv_verbs *out, const quevu_ui_verb *verbs, uint32_t n)
 {
     uint32_t i;
@@ -226,7 +248,7 @@ static void verbs_from(qv_verbs *out, const quevu_ui_verb *verbs, uint32_t n)
     for (i = 0; i < n; i++) {
         out->v[i].id = verbs[i].id;
         out->v[i].attrs = verbs[i].attrs;
-        out->v[i].label = qv_utf8_to_wide(verbs[i].label);
+        out->v[i].label = verb_label(verbs[i].label, verbs[i].attrs);
     }
 }
 
@@ -443,9 +465,19 @@ void quevu_ui_menu_remove(uint32_t item)
     post_id(QV_MENU_REMOVE, item);
 }
 
+void quevu_ui_setting(uint32_t id, uint32_t value)
+{
+    qv_cmd *c;
+    if (id != QUEVU_SETTING_TRAY)
+        return;
+    c = qv_cmd_new(QV_TRAY);
+    c->a = value & (QUEVU_TRAY_MINIMIZE | QUEVU_TRAY_CLOSE);
+    qv_post(c);
+}
+
 void quevu_ui_tray(uint32_t enabled)
 {
-    post_flag(QV_TRAY, 0, enabled != 0);
+    quevu_ui_setting(QUEVU_SETTING_TRAY, enabled ? QUEVU_TRAY_MINIMIZE : 0);
 }
 
 void quevu_ui_show(uint32_t visible)

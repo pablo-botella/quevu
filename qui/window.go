@@ -109,10 +109,33 @@ func (w *Window) SetFindBudget(chunks int) {
 	w.mu.Unlock()
 }
 
+// Settings says how the window behaves from now on: id is the setting and
+// value what that setting takes. It may be called at any time, before the
+// window shows or while it runs, and as often as the application wants:
+// the last value stands. The window keeps nothing from one run to the
+// next; where a value is stored is the application's business.
+//
+// With TrayBehavior, while any of its bits is set there is an icon in the
+// notification area, whose menu is TrayMenu. A window hidden there comes
+// back when the value goes to zero. Where the system has no such area the
+// setting does nothing: the window minimizes, and asking to close it
+// calls OnClose, as always.
+//
+// A setting this version does not know is ignored.
+func (w *Window) Settings(id Setting, value uint32) { uiSetting(uint32(id), value) }
+
 // Tray puts an icon in the notification area, or takes it away. While it
 // is there, minimizing the window hides it; its menu is TrayMenu. Where
 // the system has no such area the window simply minimizes.
-func (w *Window) Tray(on bool) { uiTray(flag(on)) }
+//
+// It is Settings(TrayBehavior, MinimizeToTray), or zero.
+func (w *Window) Tray(on bool) {
+	if on {
+		w.Settings(TrayBehavior, MinimizeToTray)
+	} else {
+		w.Settings(TrayBehavior, 0)
+	}
+}
 
 // Show puts the window on the screen, or hides it without closing it.
 func (w *Window) Show(visible bool) { uiShow(flag(visible)) }
@@ -329,6 +352,13 @@ type Verb struct {
 	Do func()
 	// Disabled shows the button without letting it be pressed.
 	Disabled bool
+	// Checkable draws the button with a box in front of its words: it
+	// stands for something that is on or off. It is a button like any
+	// other: pressing it runs Do and moves nothing.
+	Checkable bool
+	// Checked marks the box: it is on. The mark is the application's to
+	// move, by setting the verbs again.
+	Checked bool
 }
 
 // State is everything a control shows.
@@ -474,7 +504,13 @@ func (w *Window) verbsToC(verbs []Verb) (cs []uiVerb, fns map[uint32]func()) {
 		w.mu.Unlock()
 		cs[i] = uiVerb{id: id, label: v.Label}
 		if v.Disabled {
-			cs[i].attrs = verbDisabled
+			cs[i].attrs |= verbDisabled
+		}
+		if v.Checkable || v.Checked {
+			cs[i].attrs |= verbCheckable
+		}
+		if v.Checked {
+			cs[i].attrs |= verbChecked
 		}
 		if v.Do != nil {
 			fns[id] = v.Do
@@ -499,7 +535,7 @@ func (w *Window) MenuBar() *Menu { return &Menu{w: w, id: menuBar} }
 func (w *Window) Menu(label string) *Menu { return w.MenuBar().Menu(label) }
 
 // TrayMenu returns the menu of the icon in the notification area. It is
-// only reachable while Tray is on.
+// only reachable while the icon is there: see Settings.
 func (w *Window) TrayMenu() *Menu { return &Menu{w: w, id: menuTray} }
 
 // Menu adds an entry that opens a menu of its own, and returns that menu.

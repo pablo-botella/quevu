@@ -72,7 +72,9 @@ const (
 	lightBlink  = 1
 	lightHollow = 2
 
-	verbDisabled = 1
+	verbDisabled  = 1
+	verbCheckable = 2
+	verbChecked   = 4
 
 	menuSeparator = 1
 	menuChecked   = 2
@@ -84,6 +86,25 @@ const (
 const (
 	menuBar  = 0
 	menuTray = 0xffffffff
+)
+
+// Setting is something about how the window behaves that the application
+// decides, with Window.Settings. Each takes a value of its own.
+type Setting uint32
+
+// TrayBehavior is what goes to the notification area: its value is
+// MinimizeToTray, CloseToTray, both or zero. Zero, which is how a window
+// starts, is no icon there at all.
+const TrayBehavior Setting = 1
+
+// The values of TrayBehavior, as numbered in quevu_ui.h.
+const (
+	// MinimizeToTray hides the window in the notification area when the
+	// user minimizes it.
+	MinimizeToTray uint32 = 1
+	// CloseToTray hides it there when the user asks to close it, and
+	// OnClose is not called.
+	CloseToTray uint32 = 2
 )
 
 // Kinds of event, as numbered in quevu_ui.h.

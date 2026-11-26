@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mkskill>
   <version-spec params="major:byte,minor:[0-99],build:word">
-    <version major="0" minor="0" build="1" lock="major">
-      <ts></ts>
+    <version major="0" minor="0" build="2" lock="major">
+      <ts>2026-11-26T12:01:25Z</ts>
     </version>
-    <label key="title" volatile="true" default-to-ts="true"></label>
+    <label key="title" volatile="true" default-to-ts="true">2026-11-26T12:01:25Z</label>
     <create file="__publish.bat" git-ignore="true" eol="crlf">
 @echo off
 set TAG={$$$ version $$$}
@@ -25,5 +25,6 @@ exit /b 1
       <description>Control panel core for Go applications: an orderly start and stop of the pieces an application is made of (Unit, Panel) and a log mechanism that keeps each output apart and serves it by position: the hub (QHub) and its contracts (Chunk, Writer, Provider, Feed, Source, Controller). Use when working with github.com/pablo-botella/quevu or any of the quevu-* modules, or when a Go application needs a graceful shutdown coordinated across several pieces.</description>
     </meta>
   </project>
-  <version-history max="10"></version-history>
+  <version-history max="10">
+    <release version="v0.0.2" ts="2026-11-26T12:01:25Z" title="2026-11-26T12:01:25Z" method="vinc-build"></release></version-history>
 </mkskill>
